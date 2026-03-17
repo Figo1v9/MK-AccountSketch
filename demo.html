@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AccountSketch Pro ✏️ - المحاسب الذكي</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;800&family=Cairo:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #ffffff;
+            --border: #000000;
+            --zinc-900: #18181b;
+            --card-shadow: 6px 6px 0px var(--border);
+            --btn-shadow: 4px 4px 0px var(--border);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: var(--bg);
+            color: var(--zinc-900);
+            font-family: 'Cairo', sans-serif;
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        #app-wrapper {
+            display: grid;
+            grid-template-columns: 280px 1fr 320px;
+            grid-template-rows: auto 1fr;
+            height: 100vh;
+            width: 100vw;
+            gap: 12px;
+            padding: 12px;
+            background: #fff;
+        }
+
+        #main-header {
+            grid-column: 1 / -1;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 24px;
+            border: 4px solid var(--border);
+            box-shadow: var(--card-shadow);
+            background: #fff;
+            margin-bottom: 8px;
+        }
+
+        .brand-logo {
+            font-family: 'Outfit', sans-serif;
+            font-size: 28px;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .header-actions { display: flex; gap: 12px; }
+
+        .brutal-panel {
+            background: #fff;
+            border: 4px solid var(--border);
+            box-shadow: var(--card-shadow);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .panel-header {
+            background: var(--zinc-900);
+            color: #fff;
+            padding: 10px;
+            font-size: 16px;
+            font-weight: 900;
+            text-align: center;
+            border-bottom: 4px solid var(--border);
+        }
+
+        #mods-list, #rcon {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .mod-card {
+            padding: 12px;
+            border: 3px solid var(--border);
+            box-shadow: 4px 4px 0px var(--border);
+            cursor: grab;
+            transition: 0.15s;
+            background: #fff;
+        }
+        .mod-card:hover { transform: translate(-2px, -2px); box-shadow: 6px 6px 0px var(--border); }
+        .mod-card .icon-label { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 16px; margin-bottom: 4px; }
+        .mod-card .desc { font-size: 11px; color: #555; font-weight: 600; line-height: 1.3; }
+
+        #canvas-area {
+            position: relative;
+            background: #ffffff;
+            background-image: radial-gradient(var(--border) 1.5px, transparent 0);
+            background-size: 40px 40px;
+            border: 4px solid var(--border);
+            box-shadow: var(--card-shadow);
+            overflow: hidden;
+        }
+
+        #drop-zone { width: 100%; height: 100%; position: relative; }
+
+        .pm {
+            position: absolute;
+            width: 320px;
+            background: #fff;
+            border: 4px solid var(--border);
+            box-shadow: 8px 8px 0px var(--border);
+        }
+        .pm.drag-move { z-index: 1000; box-shadow: 14px 14px 0px var(--border); }
+        .pm-head { padding: 8px 12px; border-bottom: 4px solid var(--border); display: flex; justify-content: space-between; align-items: center; cursor: move; }
+        .pm-title { font-weight: 900; font-size: 15px; display: flex; align-items: center; gap: 6px; }
+        .pm-body { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+
+        .frow { display: grid; grid-template-columns: 1fr 110px 40px; gap: 6px; align-items: center; }
+        .flbl { font-size: 11.5px; font-weight: 700; text-align: right; }
+        .fi { width: 100%; border: 3px solid var(--border); padding: 4px 6px; font-weight: 800; font-family: inherit; outline: none; background: #fff; font-size: 14px; text-align: center; }
+        .fi.calc { background: #dcfce7 !important; }
+        .funit { font-size: 11px; font-weight: 700; color: #666; }
+        .fml { margin-top: 6px; padding: 6px; background: #f3f4f6; border: 2px solid var(--border); font-size: 10.5px; color: #444; text-align: center; font-weight: 600; line-height: 1.3; }
+
+        .brutal-btn {
+            background: #fff;
+            border: 4px solid var(--border);
+            box-shadow: var(--btn-shadow);
+            padding: 8px 16px;
+            font-weight: 900;
+            font-family: 'Outfit', sans-serif;
+            cursor: pointer;
+            transition: 0.1s;
+            display: flex;
+            align-items: center; gap: 8px;
+        }
+        .brutal-btn:hover { transform: translate(-2px, -2px); box-shadow: 6px 6px 0px var(--border); }
+        .brutal-btn:active { transform: translate(2px, 2px); box-shadow: 0px 0px 0px var(--border); }
+        .btn-danger { background: #FF5C5C; color: #fff; }
+
+        /* Results Display */
+        .ri { background: #fff; border: 3px solid var(--border); box-shadow: 4px 4px 0px var(--border); padding: 10px; margin-bottom: 12px; }
+        .ri-title { font-weight: 900; margin-bottom: 6px; border-bottom: 2.5px solid var(--border); padding-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+        .ri-row { display: flex; justify-content: space-between; font-size: 12.5px; font-weight: 700; margin-bottom: 3px; }
+        .ri-val { color: #000; background: #f0f0f0; padding: 0 4px; }
+
+        #hint { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; border: 4px dashed var(--border); padding: 40px; background: #fff; z-index: 1; }
+
+        #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(100px); background: var(--zinc-900); color: #fff; padding: 12px 30px; border: 4px solid var(--border); box-shadow: 6px 6px 0px var(--border); font-weight: 900; z-index: 10000; transition: 0.3s; }
+        #toast.show { transform: translateX(-50%) translateY(0); }
+
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #fff; }
+        ::-webkit-scrollbar-thumb { background: var(--border); }
+    </style>
+</head>
+<body>
+
+<div id="app-wrapper">
+    <header id="main-header">
+        <div class="brand-logo">📐 AccountSketch <span style="font-size: 14px; opacity: 0.6;">Pro v2.1</span></div>
+        <div class="header-actions">
+            <button class="brutal-btn" onclick="copyResults()">📋 نسخ النتائج</button>
+            <button class="brutal-btn btn-danger" onclick="clearCanvas()">🗑️ تصفية اللوحة</button>
+        </div>
+    </header>
+
+    <!-- SIDEBAR -->
+    <aside class="brutal-panel">
+        <div class="panel-header">✏️ الأدوات المحاسبية</div>
+        <div id="mods-list"></div>
+    </aside>
+
+    <!-- CANVAS -->
+    <main id="canvas-area">
+        <div id="hint">
+            <div style="font-size: 50px; margin-bottom: 15px;">📊</div>
+            <div style="font-weight: 900; font-size: 22px;">اسحب أي موديول هنا<br>لإجراء الحسابات فوراً</div>
+        </div>
+        <div id="drop-zone"></div>
+    </main>
+
+    <!-- RESULTS -->
+    <aside class="brutal-panel">
+        <div class="panel-header">📈 النتائج المباشرة</div>
+        <div id="rcon">
+            <div style="text-align: center; margin-top: 60px; font-weight: 700; opacity: 0.4;">ضع وحدات وأدخل أرقاماً<br>لرؤية التحليل هنا</div>
+        </div>
+    </aside>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ════════════════════════════════════════════════
+// MASTER MODULES (Restored with Original Logic)
+// ════════════════════════════════════════════════
+const MODS = [
+  {
+    id:'income', title:'قائمة الدخل', icon:'💰', color:'#FF90E8',
+    desc:'الإيراد، التكلفة، وصافي الربح بعد الفوائد والضرائب',
+    fields:[
+      {k:'rev',   l:'الإيراد (المبيعات)',       u:'ج.م'},
+      {k:'cogs',  l:'تكلفة البضاعة المباعة',    u:'ج.م'},
+      {k:'gp',    l:'مجمل الربح',               u:'ج.م'},
+      {k:'opex',  l:'مصاريف التشغيل',           u:'ج.م'},
+      {k:'ebit',  l:'قبل فوائد وضرائب',     u:'ج.م'},
+      {k:'int',   l:'المصاريف التمويلية',       u:'ج.م'},
+      {k:'tax',   l:'الضرائب',                  u:'ج.م'},
+      {k:'ni',    l:'صافي الدخل النهائي',       u:'ج.م'},
+    ],
+    solver: function(v){
+      let c=true,i=0;
+      while(c&&i<10){c=false;i++;
+        if(n(v.rev)&&n(v.cogs)&&!n(v.gp)){v.gp=r(v.rev-v.cogs);c=true;}
+        if(n(v.rev)&&n(v.gp)&&!n(v.cogs)){v.cogs=r(v.rev-v.gp);c=true;}
+        if(n(v.cogs)&&n(v.gp)&&!n(v.rev)){v.rev=r(v.cogs+v.gp);c=true;}
+        if(n(v.gp)&&n(v.opex)&&!n(v.ebit)){v.ebit=r(v.gp-v.opex);c=true;}
+        if(n(v.gp)&&n(v.ebit)&&!n(v.opex)){v.opex=r(v.gp-v.ebit);c=true;}
+        const it = (v.int||0) + (v.tax||0);
+        if(n(v.ebit)&&!n(v.ni)){v.ni=r(v.ebit-it);c=true;}
+        if(n(v.ni)&&!n(v.ebit)){v.ebit=r(v.ni+it);c=true;}
+      }
+      return v;
+    },
+    formula:'الإيراد − COGS = مجمل الربح | EBIT − فوائد − ضرائب = صافي الدخل'
+  },
+  {
+    id:'gmargin', title:'هامش الربح الإجمالي', icon:'📊', color:'#74F0ED',
+    desc:'حساب نسبة مجمل الربح مقارنة بالإيراد',
+    fields:[
+      {k:'rev',  l:'الإيراد الكلي',         u:'ج.م'},
+      {k:'cogs', l:'تكلفة البضاعة',        u:'ج.م'},
+      {k:'gp',   l:'مجمل الربح',           u:'ج.م'},
+      {k:'gmp',  l:'الهامش الإجمالي',     u:'%'},
+    ],
+    solver: function(v){
+      if(n(v.rev)&&n(v.cogs)&&!n(v.gp))v.gp=r(v.rev-v.cogs);
+      if(n(v.rev)&&n(v.gp)&&!n(v.cogs))v.cogs=r(v.rev-v.gp);
+      if(n(v.gp)&&n(v.rev)&&v.rev!==0&&!n(v.gmp))v.gmp=r(v.gp/v.rev*100);
+      if(n(v.gmp)&&n(v.rev)&&!n(v.gp))v.gp=r(v.gmp/100*v.rev);
+      return v;
+    },
+    formula:'هامش الربح % = (مجمل الربح ÷ الإيراد) × 100'
+  },
+  {
+    id:'breakeven', title:'نقطة التعادل', icon:'⚖️', color:'#FFBD2E',
+    desc:'تحديد الكمية المطلوبة لتغطية كافة التكاليف',
+    fields:[
+      {k:'fc',    l:'التكاليف الثابتة',       u:'ج.م'},
+      {k:'price', l:'سعر بيع الوحدة',         u:'ج.م'},
+      {k:'vc',    l:'التكلفة المتغيرة/وحدة',  u:'ج.م'},
+      {k:'beq',   l:'وحدات التعادل',     u:'وحدة'},
+    ],
+    solver: function(v){
+      if(n(v.price) && n(v.vc)) {
+          let cm = v.price - v.vc;
+          if(n(v.fc) && cm > 0) v.beq = Math.ceil(v.fc / cm);
+      }
+      return v;
+    },
+    formula:'رقم التعادل = تكاليف ثابتة ÷ (سعر بيع − تكلفة متغيرة)'
+  },
+  {
+    id:'balance', title:'معادلة الميزانية', icon:'🏦', color:'#8AFF92',
+    desc:'التوازن بين الأصول والخصوم وحقوق الملكية',
+    fields:[
+      {k:'assets', l:'إجمالي الأصول',     u:'ج.م'},
+      {k:'liab',   l:'إجمالي الخصوم',    u:'ج.م'},
+      {k:'equity', l:'حقوق الملكية',      u:'ج.م'},
+    ],
+    solver: function(v){
+      if(n(v.assets)&&n(v.liab)&&!n(v.equity))v.equity=r(v.assets-v.liab);
+      if(n(v.assets)&&n(v.equity)&&!n(v.liab))v.liab=r(v.assets-v.equity);
+      if(n(v.liab)&&n(v.equity)&&!n(v.assets))v.assets=r(v.liab+v.equity);
+      return v;
+    },
+    formula:'الأصول = الخصوم + حقوق الملكية'
+  },
+  {
+    id:'roi', title:'العائد على الاستثمار', icon:'📈', color:'#AEFFED',
+    desc:'ROI - كفاءة استثمار رأس المال',
+    fields:[
+      {k:'np',   l:'صافي الربح',         u:'ج.م'},
+      {k:'cost', l:'تكلفة الاستثمار',    u:'ج.م'},
+      {k:'roi',  l:'ROI',                u:'%'},
+    ],
+    solver: function(v){
+      if(n(v.np)&&n(v.cost)&&v.cost!==0&&!n(v.roi))v.roi=r(v.np/v.cost*100);
+      return v;
+    },
+    formula:'ROI% = (صافي الربح ÷ التكلفة) × 100'
+  },
+  {
+    id:'liquidity', title:'نسب السيولة', icon:'💳', color:'#DABFFF',
+    desc:'النسبة الجارية والسريعة للملاءة المالية',
+    fields:[
+      {k:'ca',  l:'أصول متداولة',    u:'ج.م'},
+      {k:'cl',  l:'خصوم متداولة',   u:'ج.م'},
+      {k:'cr',  l:'النسبة الجارية',  u:':1'},
+    ],
+    solver: function(v){
+      if(n(v.ca)&&n(v.cl)&&v.cl!==0)v.cr=r(v.ca/v.cl);
+      return v;
+    },
+    formula:'النسبة الجارية = أصول متداولة ÷ خصوم متداولة'
+  },
+  {
+    id:'cogs', title:'تكلفة البضاعة', icon:'📦', color:'#CFFBFF',
+    desc:'حساب COGS بالتفصيل',
+    fields:[
+      {k:'oi',  l:'مخزون أول',         u:'ج.م'},
+      {k:'pur', l:'المشتريات',         u:'ج.م'},
+      {k:'ci',  l:'مخزون آخر',         u:'ج.م'},
+      {k:'cog', l:'تكلفة المباع',     u:'ج.م'},
+    ],
+    solver: function(v){
+      if(n(v.oi)&&n(v.pur)&&n(v.ci))v.cog=r(v.oi+v.pur-v.ci);
+      return v;
+    },
+    formula:'COGS = (أول المدة + المشتريات) − آخر المدة'
+  },
+];
+
+// ════════════════════════════════════════════════
+// LOGIC HELPERS
+// ════════════════════════════════════════════════
+const n = v => v !== null && v !== undefined && v !== '';
+const r = v => Math.round(v * 100) / 100;
+const fmtN = v => {
+  if(!n(v)) return '---';
+  const abs = Math.abs(v);
+  if(abs >= 1e9) return (v/1e9).toFixed(2) + ' مليار';
+  if(abs >= 1e6) return (v/1e6).toFixed(2) + ' م';
+  return v.toLocaleString('ar-EG');
+};
+
+let placed = [], zc = 100, dragSrc = null;
+
+// Initialization
+function init(){
+    renderSidebar();
+    setupDropZone();
+}
+
+function renderSidebar(){
+    document.getElementById('mods-list').innerHTML = MODS.map(m => `
+        <div class="mod-card" draggable="true" ondragstart="dragSrc='${m.id}'" style="border-right: 8px solid ${m.color}">
+            <div class="icon-label">${m.icon} ${m.title}</div>
+            <div class="desc">${m.desc}</div>
+        </div>
+    `).join('');
+}
+
+function setupDropZone(){
+    const dz = document.getElementById('canvas-area');
+    dz.ondragover = e => e.preventDefault();
+    dz.ondrop = e => {
+        e.preventDefault();
+        if(!dragSrc) return;
+        const rect = dz.getBoundingClientRect();
+        addMod(dragSrc, e.clientX - rect.left - 40, e.clientY - rect.top - 20);
+        dragSrc = null;
+    };
+}
+
+function addMod(defId, x, y){
+    const def = MODS.find(m => m.id === defId);
+    const mid = defId + '_' + Date.now();
+    const mod = { id: mid, defId, x, y, vals: {}, calcKeys: [] };
+    placed.push(mod);
+    renderMod(mod);
+    document.getElementById('hint').style.display = 'none';
+}
+
+function renderMod(mod){
+    const def = MODS.find(m => m.id === mod.defId);
+    const el = document.createElement('div');
+    el.id = mod.id; el.className = 'pm';
+    el.style.left = mod.x + 'px'; el.style.top = mod.y + 'px';
+    el.style.zIndex = ++zc;
+    
+    el.innerHTML = `
+        <div class="pm-head" style="background:${def.color}">
+            <div class="pm-title"><span>${def.icon}</span> ${def.title}</div>
+            <button class="xbtn" onclick="removeMod('${mod.id}')">✕</button>
+        </div>
+        <div class="pm-body">
+            ${def.fields.map(f => `
+                <div class="frow">
+                    <span class="flbl">${f.l}</span>
+                    <input type="number" class="fi" id="i_${mod.id}_${f.k}" 
+                        placeholder="0" oninput="changeVal('${mod.id}','${f.k}',this.value)">
+                    <span class="funit">${f.u}</span>
+                </div>
+            `).join('')}
+            <div class="fml">${def.formula}</div>
+        </div>
+    `;
+    
+    el.onmousedown = () => el.style.zIndex = ++zc;
+    makeDraggable(el, mod);
+    document.getElementById('drop-zone').appendChild(el);
+}
+
+function changeVal(mid, key, val){
+    const mod = placed.find(m => m.id === mid);
+    const def = MODS.find(m => m.id === mod.defId);
+    mod.vals[key] = val === '' ? null : parseFloat(val);
+    
+    // Auto Solve
+    const solved = def.solver({...mod.vals});
+    mod.calcKeys = [];
+    def.fields.forEach(f => {
+        const input = document.getElementById(`i_${mid}_${f.k}`);
+        if(n(solved[f.k])) {
+            input.value = solved[f.k];
+            if(!n(mod.vals[f.k])) {
+                input.classList.add('calc');
+                mod.calcKeys.push(f.k);
+            } else {
+                input.classList.remove('calc');
+            }
+        } else {
+            if(!n(mod.vals[f.k])) input.value = '';
+            input.classList.remove('calc');
+        }
+    });
+    updateResults();
+}
+
+function makeDraggable(el, mod){
+    const head = el.querySelector('.pm-head');
+    let drag = false, ox, oy;
+
+    const onMove = e => {
+        if(!drag) return;
+        mod.x = e.clientX - ox; mod.y = e.clientY - oy;
+        el.style.left = mod.x + 'px'; el.style.top = mod.y + 'px';
+    };
+
+    const onStop = () => {
+        drag = false;
+        el.classList.remove('drag-move');
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onStop);
+    };
+
+    head.addEventListener('mousedown', e => {
+        if(e.target.closest('.xbtn')) return;
+        drag = true;
+        ox = e.clientX - el.offsetLeft; oy = e.clientY - el.offsetTop;
+        el.style.zIndex = ++zc;
+        el.classList.add('drag-move');
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onStop);
+        e.preventDefault();
+    });
+}
+
+function updateResults(){
+    const rcon = document.getElementById('rcon');
+    const active = placed.filter(m => Object.values(m.vals).some(v => n(v)));
+    if(!active.length) { rcon.innerHTML = '<div style="text-align:center; margin-top:60px; opacity:0.4;">ضع وحدات وأدخل أرقاماً لرؤية التحليل هنا</div>'; return; }
+    
+    rcon.innerHTML = active.map(m => {
+        const def = MODS.find(d => d.id === m.defId);
+        return `
+            <div class="ri" style="border-top: 8px solid ${def.color}">
+                <div class="ri-title">${def.icon} ${def.title}</div>
+                ${def.fields.map(f => (n(m.vals[f.k]) || m.calcKeys.includes(f.k)) ? `
+                    <div class="ri-row">
+                        <span>${f.l}</span>
+                        <span class="ri-val">${fmtN(m.vals[f.k])} ${f.u}</span>
+                    </div>
+                ` : '').join('')}
+            </div>
+        `;
+    }).join('');
+}
+
+function removeMod(mid){
+    placed = placed.filter(m => m.id !== mid);
+    document.getElementById(mid).remove();
+    if(!placed.length) document.getElementById('hint').style.display = 'block';
+    updateResults();
+}
+
+function clearCanvas(){
+    placed = [];
+    document.getElementById('drop-zone').innerHTML = '';
+    document.getElementById('hint').style.display = 'block';
+    updateResults();
+    toast('🗑️ تم تنظيف اللوحة بالكامل');
+}
+
+function copyResults(){
+    let out = "📊 تقرير AccountSketch المباشر\n" + "=".repeat(30) + "\n\n";
+    placed.forEach(m => {
+        const def = MODS.find(d => d.id === m.defId);
+        out += `[ ${def.title} ]\n`;
+        def.fields.forEach(f => { if(n(m.vals[f.k])) out += `• ${f.l}: ${m.vals[f.k]} ${f.u}\n`; });
+        out += "\n";
+    });
+    navigator.clipboard.writeText(out).then(() => toast('📋 تم نسخ النتائج إلى الحافظة'));
+}
+
+function toast(msg){
+    const t = document.getElementById('toast');
+    t.innerText = msg; t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+init();
+</script>
+</body>
+</html>

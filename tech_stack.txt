@@ -1,0 +1,22 @@
+Vite 8
+Framework react Latest version: 19.2
+CSS Engine : UnoCSS 
+Canvas/Nodes : ReactFlow v12 
+Animation : Framer Motion 
+ State : Zustand
+Math Engine : math.js (مع الاعتبار ان القوانين لازم تكون بالعربي )
+Font/Icons : Lucide React
+theme : Neobrutalism like demo.html
+
+ الكل المذكرو في ملف المعادلات والخوارزميات
+ الأدوات المحاسبية
+هو المرجع الاصلي وليس اي شيئ اخر 
+
+
+المعادلات او القوانين يكونو بيتكتبو في 
+ده بيتكتب بـ LaTeX أو KaTeX
+بحيث كل كرت من ادوات المحاسبة يكون علية زي علامة استفهام لما يدوس عليها يظهرو نافذة فيها القوانين بطريقة كتابة 
+LaTeX أو KaTeXطبعا بالعربي 
+وفية صورة ريفرنس ممكن تشوفها ازاي مكتوبة 
+وطبعا بيدعم العربي
+ 
