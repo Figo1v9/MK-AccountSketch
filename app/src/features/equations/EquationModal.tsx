@@ -1,6 +1,6 @@
 import { useModalStore } from '@/store/modalStore';
 import { X } from 'lucide-react';
-import { BlockMath } from 'react-katex';
+import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -23,9 +23,17 @@ export const EquationModal = () => {
                                 <X size={24} strokeWidth={3} />
                             </button>
                         </div>
-                        <div className="p-6 text-center overflow-x-auto text-[20px] font-bold" dir="ltr">
-                            <BlockMath math={latex} />
-                        </div>
+                        <div 
+                            className="p-6 text-center overflow-x-auto text-[20px] font-bold" 
+                            dir="ltr"
+                            dangerouslySetInnerHTML={{ 
+                                __html: katex.renderToString(latex, { 
+                                    throwOnError: false, 
+                                    strict: false,
+                                    trust: true
+                                }) 
+                            }}
+                        />
                         <div className="p-4 border-t-4 border-black bg-gray-100 flex justify-end">
                             <button onClick={closeModal} className="brutal-btn bg-white">
                                 إغلاق

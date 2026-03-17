@@ -250,17 +250,18 @@ export const MODULES: AccountingModuleDef[] = [
     id: 'target_sales', title: 'المبيعات المستهدفة', icon: '🎯', color: '#BDECB6',
     desc: 'الوصول لهدف ربحي محدد (قبل أو بعد الضريبة)',
     fields:[
-      {k:'fc',  l:'تكاليف ثابتة',     u:'ج.م'},
-      {k:'tp',  l:'الربح المستهدف',    u:'ج.م'},
-      {k:'tax', l:'نسبة الضريبة',     u:'%'},
-      {k:'cm',  l:'هامش مساهمة الوحدة',u:'ج.م', helper: {
+      {k:'fc',      l:'التكاليف الثابتة',     u:'ج.م'},
+      {k:'tax',     l:'نسبة الضريبة',        u:'%'},
+      {k:'cm',      l:'هامش مساهمة الوحدة',   u:'ج.م', helper: {
           type: 'formula', title: 'استنتاج الهامش للوحدة',
           fields: [{k:'p', l:'سعر البيع', u:'ج.م'}, {k:'v', l:'ت. متغيرة للوحدة', u:'ج.م'}],
           solver: (s: any) => (n(s.p) && n(s.v)) ? r(s.p - s.v) : null
       }},
-      {k:'price',  l:'سعر البيع (اختياري)',u:'ج.م'},
-      {k:'qty', l:'المبيعات المطلوبة (كمية)',         u:'وحدة'},
-      {k:'val', l:'المبيعات المستهدفة (قيمة)',        u:'ج.م'},
+      {k:'tp_pre',  l:'الربح المستهدف (قبل ض)', u:'ج.م'},
+      {k:'tp_post', l:'الربح المستهدف (بعد ض)', u:'ج.م'},
+      {k:'price',   l:'سعر البيع (اختياري)',     u:'ج.م'},
+      {k:'qty',     l:'المبيعات المطلوبة (كمية)', u:'وحدة'},
+      {k:'val',     l:'المبيعات المستهدفة (قيمة)',u:'ج.م'},
     ],
     solver: (v: any) => {
       delete v._error;
@@ -268,46 +269,50 @@ export const MODULES: AccountingModuleDef[] = [
       while(c && i<10){
         c=false; i++;
         
-        // If Net Profit (tp) and Tax are given, we need Pre-tax Profit for the volume formula
-        let reqPreTax = v.tp;
-        if(n(v.tp) && n(v.tax)) {
-            reqPreTax = v.tp! / (1 - (v.tax! / 100));
+        // Relationship between Pre-tax and Post-tax
+        if(n(v.tp_post) && n(v.tax) && !n(v.tp_pre)) {
+          v.tp_pre = r(v.tp_post! / (1 - (v.tax! / 100)));
+          c = true;
+        }
+        if(n(v.tp_pre) && n(v.tax) && !n(v.tp_post)) {
+          v.tp_post = r(v.tp_pre! * (1 - (v.tax! / 100)));
+          c = true;
         }
 
-        if (n(v.cm) && v.cm! <= 0) {
-            v._error = 'هامش المساهمة يجب أن يكون أكبر من الصفر';
-            break;
+        // QTY = (FC + TP_PRE) / CM
+        if(n(v.fc) && n(v.tp_pre) && n(v.cm) && !n(v.qty)) {
+          v.qty = Math.ceil((v.fc! + v.tp_pre!) / v.cm!);
+          c = true;
         }
-
-        // QTY = (FC + PreTax) / CM
-        if(n(v.fc) && n(reqPreTax) && n(v.cm) && !n(v.qty)) { v.qty = Math.ceil((v.fc! + reqPreTax!) / v.cm!); c = true; }
         
-        // (FC + PreTax) = QTY * CM
+        // Reverse solving for FC or TP_PRE or CM
         if(n(v.qty) && n(v.cm)) {
-            const currentPreTaxTotal = v.qty! * v.cm! - (v.fc || 0);
-            if(!n(v.tp)) { 
-                v.tp = n(v.tax) ? r(currentPreTaxTotal * (1 - (v.tax!/100))) : r(currentPreTaxTotal);
-                c = true; 
-            }
-            if(n(v.tp) && !n(v.fc)) { v.fc = r((v.qty! * v.cm!) - (n(v.tax) ? v.tp! / (1-(v.tax!/100)) : v.tp!)); c = true; }
+          const totalContribution = v.qty! * v.cm!;
+          if(n(v.fc) && !n(v.tp_pre)) {
+            v.tp_pre = r(totalContribution - v.fc!);
+            c = true;
+          }
+          if(n(v.tp_pre) && !n(v.fc)) {
+            v.fc = r(totalContribution - v.tp_pre!);
+            c = true;
+          }
+          if(n(v.fc) && n(v.tp_pre) && !n(v.cm) && v.qty! > 0) {
+            v.cm = r((v.fc! + v.tp_pre!) / v.qty!);
+            c = true;
+          }
         }
 
-        // CM = (FC + PreTax) / QTY
-        if(n(v.fc) && n(reqPreTax) && n(v.qty) && v.qty! > 0 && !n(v.cm)) {
-            v.cm = r((v.fc! + reqPreTax!) / v.qty!); c = true;
-        }
-
-        // VAL = QTY * PRICE
+        // Value and Price
         if (n(v.qty) && n(v.price) && !n(v.val)) { v.val = r(v.qty! * v.price!); c = true; }
-        // QTY = VAL / PRICE
         if (n(v.val) && n(v.price) && v.price! > 0 && !n(v.qty)) { v.qty = r(v.val! / v.price!); c = true; }
-        // PRICE = VAL / QTY
         if (n(v.val) && n(v.qty) && v.qty! > 0 && !n(v.price)) { v.price = r(v.val! / v.qty!); c = true; }
       }
+
+      if (n(v.cm) && v.cm! <= 0) v._error = 'هامش المساهمة يجب أن يكون أكبر من الصفر';
       return v;
     },
-    formula: 'المبيعات المستهدفة = (ثابتة + ربح) / هامش | لو الربح بعد الضريبة: ربح_قبل = بعد / (1-ض)',
-    latex: '\\text{كمية المبيعات} = \\frac{\\text{التكاليف الثابتة} + \\frac{\\text{صافي الربح}}{1 - \\text{نسبة الضريبة}}}{\\text{هامش المساهمة للوحدة}}'
+    formula: 'المبيعات المستهدفة = (ثابتة + ربح قبل ض) / هامش | ربح قبل = بعد / (1-ض)',
+    latex: '\\text{كمية المبيعات} = \\frac{\\text{التكاليف الثابتة} + \\text{الربح المستهدف قبل الضريبة}}{\\text{هامش المساهمة للوحدة}}'
   },
   {
     id: 'mos', title: 'هامش الأمان', icon: '🛡️', color: '#FFDFBA',
