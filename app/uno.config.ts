@@ -6,10 +6,6 @@ export default defineConfig({
     presetTypography()
   ],
   theme: {
-    fontFamily: {
-      outfit: 'Outfit, sans-serif',
-      cairo: 'Cairo, sans-serif',
-    },
     colors: {
       border: '#000000',
       'zinc-900': '#18181b',
