@@ -1,11 +1,12 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { Handle, Position } from '@xyflow/react';
+import { Handle, Position, useStore } from '@xyflow/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FieldDefinition, FieldHelper, AccountingNodeData } from '@/core/types';
 
 import { MODULES } from '@/core/modules';
 import { useAccountStore } from '@/store/accountStore';
-import { useModalStore } from '@/store/modalStore';
+import { useModalStore, StepsData } from '@/store/modalStore';
+import { generateStepsLatex } from '@/lib/stepsGenerator';
 
 const formatCommas = (str: string | number | null | undefined) => {
     if (str === null || str === undefined || str === '') return '';
@@ -22,6 +23,28 @@ export const BrutalNode = ({ id, data }: { id: string, data: AccountingNodeData 
 
   const [localVals, setLocalVals] = useState<Record<string, string>>({});
   const [openHelper, setOpenHelper] = useState<string|null>(null);
+
+  const connection = useStore((state) => state.connection);
+  const isConnecting = connection.inProgress;
+  const isCurrentNodeOrigin = connection.inProgress ? connection.fromNode?.id === id : false;
+  const connectionHandleType = connection.inProgress ? connection.fromHandle?.type : null;
+  
+  const isTargetValidDrop = isConnecting && !isCurrentNodeOrigin && connectionHandleType === 'source';
+  const isSourceValidDrop = isConnecting && !isCurrentNodeOrigin && connectionHandleType === 'target';
+
+  const targetClasses = `!bg-black !w-4 !h-4 !border-2 !border-white transition-all duration-300 z-30 ` +
+    (isConnecting 
+      ? (isTargetValidDrop 
+          ? '!bg-emerald-500 !border-emerald-200 shadow-[0_0_20px_rgba(16,185,129,1)] scale-150' 
+          : 'opacity-0 pointer-events-none') // hide entirely to let source clicks pass or just hide for neatness
+      : 'hover:scale-125 opacity-100');
+  
+  const sourceClasses = `!bg-black !w-4 !h-4 !border-2 !border-white transition-all duration-300 z-40 ` +
+    (isConnecting 
+      ? (isSourceValidDrop 
+          ? '!bg-cyan-500 !border-cyan-200 shadow-[0_0_20px_rgba(6,182,212,1)] scale-150' 
+          : 'opacity-0 pointer-events-none')
+      : 'hover:scale-125 opacity-100');
 
   const toggleHelper = (k: string) => setOpenHelper(openHelper === k ? null : k);
 
@@ -98,7 +121,7 @@ export const BrutalNode = ({ id, data }: { id: string, data: AccountingNodeData 
 
     // 3. Solve equations
     const solved = def.solver({...valsForSolver}) as Record<string, number | null | string>;
-    const errorMsg = (solved as any)._error as string | undefined;
+    const errorMsg = (solved as Record<string, unknown>)._error as string | undefined;
 
     const finalVals: Record<string, number | null> = { ...valsForSolver };
     const newCalcKeys: string[] = [];
@@ -138,19 +161,19 @@ export const BrutalNode = ({ id, data }: { id: string, data: AccountingNodeData 
   if (!def) return null;
 
   return (
-    <div className="pm border-[4px] border-black bg-white shadow-[8px_8px_0px_#000] relative">
-      <Handle type="target" position={Position.Top} className="!bg-black !w-3 !h-3 !border-2 !border-white" />
-      <Handle type="source" position={Position.Bottom} className="!bg-black !w-3 !h-3 !border-2 !border-white" />
+    <div className={`pm border-[4px] border-black bg-white shadow-[8px_8px_0px_#000] relative rounded-[16px] transition-opacity duration-300 ${isConnecting && isCurrentNodeOrigin ? 'opacity-80' : 'opacity-100'}`}>
+      <Handle type="target" position={Position.Top} isConnectable={true} className={targetClasses} />
+      <Handle type="source" position={Position.Top} isConnectable={true} className={sourceClasses} />
       
-      <div className="pm-head p-3 border-b-4 border-black flex justify-between items-center" style={{ backgroundColor: def.color }}>
-        <div className="pm-title font-black text-lg flex items-center gap-2">
+      <div className="pm-head px-2 py-2.5 border-b-4 border-black flex justify-between items-center rounded-t-[12px]" style={{ backgroundColor: def.color }}>
+        <div className="pm-title font-black text-[15px] flex items-center gap-1.5 flex-1 min-w-0 pr-1">
             <span>{def.icon}</span> 
-            <span className="truncate max-w-[180px]">{def.title}</span>
+            <span className="truncate">{def.title}</span>
         </div>
-        <div className="flex gap-2 items-center">
+        <div className="flex gap-1.5 items-center shrink-0">
             <button 
               onClick={(e) => { e.stopPropagation(); updateNodeData(id, { vals: {}, calcKeys: [], manualKeys: [], error: undefined, helpersVals: {} }); setLocalVals({}); }} 
-              className="nodrag w-7 h-7 flex items-center justify-center font-bold text-base bg-white border-2 border-black hover:bg-slate-200 active:translate-y-[2px] shadow-[2px_2px_0px_#000] active:shadow-none rounded-full transition-all"
+              className="nodrag w-[26px] h-[26px] flex items-center justify-center font-bold text-[12px] bg-white border-2 border-black hover:bg-slate-200 active:translate-y-[2px] shadow-[2px_2px_0px_#000] active:shadow-none rounded-full transition-all"
               title="تفريغ الكارت"
             >
                 🔄
@@ -158,15 +181,35 @@ export const BrutalNode = ({ id, data }: { id: string, data: AccountingNodeData 
             {def.latex && (
                 <button 
                   onClick={(e) => { e.stopPropagation(); openModal(def.title, def.latex!); }} 
-                  className="nodrag w-7 h-7 flex items-center justify-center font-bold text-base bg-yellow-300 border-2 border-black hover:bg-yellow-400 active:translate-y-[2px] shadow-[2px_2px_0px_#000] active:shadow-none rounded-full transition-all"
+                  className="nodrag w-[26px] h-[26px] flex items-center justify-center font-bold text-[13px] bg-yellow-300 border-2 border-black hover:bg-yellow-400 active:translate-y-[2px] shadow-[2px_2px_0px_#000] active:shadow-none rounded-full transition-all"
                   style={{ fontFamily: 'Cairo, sans-serif' }}
                 >
                     ؟
                 </button>
             )}
             <button 
+              onClick={(e) => { 
+                  e.stopPropagation(); 
+                  const inputs = def.fields.filter(f => !((data.calcKeys || []).includes(f.k))).map(f => ({ l: f.l, v: data.vals[f.k] ?? '', u: f.u }));
+                  const outputs = def.fields.filter(f => (data.calcKeys || []).includes(f.k)).map(f => ({ l: f.l, v: data.vals[f.k] ?? '', u: f.u }));
+                  const stepsData: StepsData = {
+                      title: def.title,
+                      latex: def.latex || '',
+                      formula: def.formula,
+                      inputs,
+                      outputs,
+                      customSteps: generateStepsLatex(def, data)
+                  };
+                  useModalStore.getState().openSteps(stepsData);
+              }} 
+              className="nodrag w-[26px] h-[26px] flex items-center justify-center font-bold text-[12px] bg-emerald-300 border-2 border-black hover:bg-emerald-400 active:translate-y-[2px] shadow-[2px_2px_0px_#000] active:shadow-none transition-all rounded-md"
+              title="خطوات الحل"
+            >
+                📝
+            </button>
+            <button 
               onClick={(e) => { e.stopPropagation(); removeNode(id); }} 
-              className="nodrag w-7 h-7 flex items-center justify-center font-bold text-base bg-red-400 border-2 border-black hover:bg-red-500 active:translate-y-[2px] shadow-[2px_2px_0px_#000] active:shadow-none rounded-full text-white transition-all"
+              className="nodrag w-[26px] h-[26px] flex items-center justify-center font-bold text-[13px] bg-red-400 border-2 border-black hover:bg-red-500 active:translate-y-[2px] shadow-[2px_2px_0px_#000] active:shadow-none rounded-full text-white transition-all"
               style={{ fontFamily: 'Cairo, sans-serif' }}
             >
                 ✕
@@ -210,7 +253,7 @@ export const BrutalNode = ({ id, data }: { id: string, data: AccountingNodeData 
                       dir="ltr"
                       lang="en"
                       style={{ fontFamily: 'Cairo, sans-serif' }}
-                      className={`w-full border-2 border-black p-1 text-center font-black text-md outline-none transition-colors ${isCalc ? 'bg-emerald-100' : isInherited ? 'bg-indigo-100 border-indigo-500' : 'bg-white focus:bg-yellow-50'} ${isManual ? 'border-blue-600' : 'border-black'}`}
+                      className={`w-full border-2 border-black p-1 text-center font-black text-md outline-none transition-colors rounded-md ${isCalc ? 'bg-emerald-100' : isInherited ? 'bg-indigo-100 border-indigo-500' : 'bg-white focus:bg-yellow-50'} ${isManual ? 'border-blue-600' : 'border-black'}`}
                       value={displayVal}
                       onChange={e => handleInputChange(f.k, e.target.value)}
                       placeholder="0"
@@ -230,7 +273,7 @@ export const BrutalNode = ({ id, data }: { id: string, data: AccountingNodeData 
                     exit={{ height: 0, opacity: 0 }}
                     className="overflow-hidden"
                   >
-                     <div className="mt-2 mb-4 bg-slate-50 border-2 border-black p-3 shadow-[4px_4px_0px_#000] z-20 relative">
+                     <div className="mt-2 mb-4 bg-slate-50 border-2 border-black p-3 shadow-[4px_4px_0px_#000] z-20 relative rounded-[12px]">
                         <HelperBlock f={f} data={data} id={id} handleInputChange={handleInputChange} />
                      </div>
                   </motion.div>
@@ -240,7 +283,7 @@ export const BrutalNode = ({ id, data }: { id: string, data: AccountingNodeData 
           );
         })}
 
-        <div className="mt-2 p-2 bg-slate-50 border-2 border-dashed border-black text-[10.5px] font-bold text-center text-slate-500 leading-relaxed italic">
+        <div className="mt-2 p-2 bg-slate-50 border-2 border-dashed border-black text-[10.5px] font-bold text-center text-slate-500 leading-relaxed italic rounded-lg">
             {def.formula}
         </div>
 
@@ -249,7 +292,7 @@ export const BrutalNode = ({ id, data }: { id: string, data: AccountingNodeData 
               <motion.div 
                 initial={{ scale: 0.8, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
-                className="p-2 border-2 border-black bg-red-50 text-red-600 font-black text-xs text-center shadow-[3px_3px_0px_var(--border)]"
+                className="p-2 border-2 border-black bg-red-50 text-red-600 font-black text-xs text-center shadow-[3px_3px_0px_var(--border)] rounded-lg"
               >
                 ⚠️ {data.error}
               </motion.div>
@@ -263,9 +306,9 @@ export const BrutalNode = ({ id, data }: { id: string, data: AccountingNodeData 
 const HelperBlock = ({ f, data, id, handleInputChange }: { f: FieldDefinition, data: AccountingNodeData, id: string, handleInputChange: (k: string, v: string) => void }) => {
     const helper = f.helper as FieldHelper;
     const { updateNodeData } = useAccountStore();
-    const hState = (data.helpersVals?.[f.k] || {}) as any;
+    const hState = (data.helpersVals?.[f.k] || {}) as Record<string, unknown>;
 
-    const updateHState = (newState: any) => {
+    const updateHState = (newState: Record<string, unknown>) => {
        updateNodeData(id, { helpersVals: { ...data.helpersVals, [f.k]: newState } });
     };
 
@@ -293,10 +336,10 @@ const HelperBlock = ({ f, data, id, handleInputChange }: { f: FieldDefinition, d
                {items.map((it, idx) => (
                   <div key={idx} className="flex gap-2 items-center">
                      <span className="text-[10px] font-black opacity-30 w-3">{idx+1}</span>
-                     <input type="text" inputMode="decimal" dir="ltr" lang="en" className="flex-1 border-2 border-black p-1 text-center font-bold text-sm bg-white outline-none focus:bg-amber-50 shadow-[2px_2px_0px_rgba(0,0,0,0.1)]" value={formatCommas(it.val)} onChange={e => updateItem(idx, e.target.value)} placeholder="0" style={{ fontFamily: 'Cairo, sans-serif' }} />
+                     <input type="text" inputMode="decimal" dir="ltr" lang="en" className="flex-1 border-2 border-black p-1 text-center font-bold text-sm bg-white outline-none focus:bg-amber-50 shadow-[2px_2px_0px_rgba(0,0,0,0.1)] rounded-md" value={formatCommas(it.val)} onChange={e => updateItem(idx, e.target.value)} placeholder="0" style={{ fontFamily: 'Cairo, sans-serif' }} />
                   </div>
                ))}
-               <button onClick={addItem} className="mt-1 bg-white border-2 border-black hover:bg-black hover:text-white text-[11px] font-black p-1 shadow-[3px_3px_0px_#000] active:shadow-none active:translate-y-[2px] transition-all">
+               <button onClick={addItem} className="mt-1 bg-white border-2 border-black hover:bg-black hover:text-white text-[11px] font-black p-1 shadow-[3px_3px_0px_#000] active:shadow-none active:translate-y-[2px] transition-all rounded-md">
                  + إضافة بند مالي
                </button>
            </div>
@@ -337,7 +380,7 @@ const HelperBlock = ({ f, data, id, handleInputChange }: { f: FieldDefinition, d
                            inputMode="decimal" 
                            dir="ltr" 
                            lang="en" 
-                           className="w-[100px] border-2 border-black p-1 text-center font-bold text-sm bg-white outline-none focus:bg-cyan-50 shadow-[2px_2px_0px_rgba(0,0,0,0.1)]" 
+                           className="w-[100px] border-2 border-black p-1 text-center font-bold text-sm bg-white outline-none focus:bg-cyan-50 shadow-[2px_2px_0px_rgba(0,0,0,0.1)] rounded-md" 
                            value={formatCommas(rawDispStr)} 
                            onChange={e => updateSubVal(sf.k, e.target.value)} 
                            placeholder="0" 

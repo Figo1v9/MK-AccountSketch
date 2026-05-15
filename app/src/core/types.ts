@@ -30,6 +30,6 @@ export type AccountingNodeData = {
   calcKeys: string[];
   manualKeys: string[];
   inheritedKeys?: string[];
-  helpersVals?: Record<string, Record<string, any>>;
+  helpersVals?: Record<string, Record<string, unknown>>;
   error?: string;
 };

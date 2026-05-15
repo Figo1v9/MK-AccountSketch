@@ -15,6 +15,7 @@ import {
  * Register Fonts for Arabic Support
  * Note: @react-pdf/renderer requires .ttf files for custom fonts.
  */
+// @ts-expect-error: Vite handles the ?url import correctly
 import cairoFontUrl from '../../public/Cairo-Regular.ttf?url';
 
 Font.register({
@@ -110,7 +111,7 @@ const styles = StyleSheet.create({
 /**
  * Functional component for the PDF Document structure
  */
-const SolutionDocument = ({ nodes }: { nodes: AccountNode[] }) => {
+const renderSolutionDocument = ({ nodes }: { nodes: AccountNode[] }) => {
   const activeNodes = nodes.filter(n =>
     Object.values(n.data.vals).some(v => v !== null && v !== undefined)
   );
@@ -124,7 +125,7 @@ const SolutionDocument = ({ nodes }: { nodes: AccountNode[] }) => {
     <Document>
       <Page size="A4" style={styles.page}>
         <View style={styles.header}>
-          <Text style={styles.docTitle}>إجابة نموذجية — AccountSketch</Text>
+          <Text style={styles.docTitle}> Mohamed Khedr — AccountSketch</Text>
           <Text style={styles.docSubtitle}>تقرير مفصل بالخطوات المحاسبية المنظمة</Text>
           <Text style={styles.dateText}>تاريخ التقرير: {dateStr}</Text>
         </View>
@@ -165,7 +166,7 @@ const SolutionDocument = ({ nodes }: { nodes: AccountNode[] }) => {
         })}
 
         <View style={styles.footer} fixed>
-          <Text>تم الإنشاء بواسطة AccountSketch Pro — جميع العمليات تمت بدقة حسابية عالية</Text>
+          <Text>تم الإنشاء بواسطة Mohamed Khedr Pro — جميع العمليات تمت بدقة حسابية عالية</Text>
           <Text render={({ pageNumber, totalPages }) => (
             `صفحة ${pageNumber} من ${totalPages}`
           )} />
@@ -189,7 +190,7 @@ export const generatePDF = async (nodes: AccountNode[]) => {
       return;
     }
 
-    const doc = <SolutionDocument nodes={nodes} />;
+    const doc = renderSolutionDocument({ nodes });
     const blob = await pdf(doc).toBlob();
     
     const url = URL.createObjectURL(blob);

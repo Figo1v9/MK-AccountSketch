@@ -52,9 +52,9 @@ function assert(
   }
 
   // Check for unexpected errors
-  if ((result as any)._error && !inputs._expectedError) {
+  if (result['_error'] && !inputs['_expectedError']) {
     testPassed = false;
-    failDetails.push(`  Unexpected error: ${(result as any)._error}`);
+    failDetails.push(`  Unexpected error: ${result['_error']}`);
   }
 
   if (testPassed) {
@@ -469,7 +469,7 @@ console.log('╚═════════════════════�
 {
   const mod = MODULES.find(m => m.id === 'breakeven')!;
   const result = mod.solver({ fc: 100000, p: 5, vc: 5, beq: null, bes: null });
-  if ((result as any)._error) {
+  if (result['_error']) {
     passed++;
     console.log('  ✅ BEP Error: يمنع CM=0 (سعر = تكلفة)');
   } else {
@@ -481,7 +481,7 @@ console.log('╚═════════════════════�
 {
   const mod = MODULES.find(m => m.id === 'breakeven')!;
   const result = mod.solver({ fc: 100000, p: 3, vc: 5, beq: null, bes: null });
-  if ((result as any)._error) {
+  if (result['_error']) {
     passed++;
     console.log('  ✅ BEP Error: يمنع CM سالب (P < VC)');
   } else {
@@ -493,7 +493,7 @@ console.log('╚═════════════════════�
 {
   const mod = MODULES.find(m => m.id === 'depreciation')!;
   const result = mod.solver({ cost: 10000, salvage: 20000, life: 5, dep: null, years: null, acc_dep: null, bv: null });
-  if ((result as any)._error) {
+  if (result['_error']) {
     passed++;
     console.log('  ✅ DEP Error: يمنع القيمة التخريدية > التكلفة');
   } else {

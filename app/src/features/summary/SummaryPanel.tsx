@@ -1,8 +1,9 @@
 import { useAccountStore } from '@/store/accountStore';
 import { MODULES } from '@/core/modules';
 import { formatCurrency } from '@/lib/utils';
-import { Download, FileText } from 'lucide-react';
+import { Download, FileText, FileSpreadsheet } from 'lucide-react';
 import { generatePDF } from '@/lib/pdfExport';
+import { exportToExcelCSV } from '@/features/excel/excelUtils';
 
 export const SummaryPanel = () => {
   const { nodes } = useAccountStore();
@@ -37,13 +38,20 @@ export const SummaryPanel = () => {
           <button 
             onClick={() => generatePDF(nodes)} 
             title="حفظ كـ PDF" 
-            className="bg-white text-black p-1 hover:bg-emerald-300 border-2 border-black rounded-sm active:translate-y-1 transition-transform"
+            className="bg-white text-black p-1 hover:bg-emerald-300 border-2 border-black rounded-md active:translate-y-1 transition-transform"
             style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontWeight: 700, fontSize: 12 }}
           >
             <FileText size={16} strokeWidth={3} />
             PDF
           </button>
-          <button onClick={handleCopy} title="نسخ التقرير" className="bg-white text-black p-1 hover:bg-yellow-300 border-2 border-black rounded-sm active:translate-y-1 transition-transform">
+          <button 
+            onClick={() => exportToExcelCSV(nodes)} 
+            title="تصدير إلى Excel / CSV" 
+            className="bg-white text-black p-1 hover:bg-blue-300 border-2 border-black rounded-md active:translate-y-1 transition-transform"
+          >
+            <FileSpreadsheet size={18} strokeWidth={3} />
+          </button>
+          <button onClick={handleCopy} title="نسخ التقرير" className="bg-white text-black p-1 hover:bg-yellow-300 border-2 border-black rounded-md active:translate-y-1 transition-transform">
             <Download size={18} strokeWidth={3} />
           </button>
         </div>

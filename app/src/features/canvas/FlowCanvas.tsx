@@ -4,13 +4,59 @@ import {
   Controls,
   useReactFlow,
   ReactFlowProvider,
+  BaseEdge,
+  EdgeProps,
+  getBezierPath
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useAccountStore } from '@/store/accountStore';
 import { BrutalNode } from '@/components/ui/BrutalNode';
 
+import { MODULES } from '@/core/modules';
+
+const CustomCurvedEdge = (props: EdgeProps) => {
+  const { id, source, target, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style } = props;
+  
+  const nodes = useAccountStore(state => state.nodes);
+  const sourceNode = nodes.find(n => n.id === source);
+  const targetNode = nodes.find(n => n.id === target);
+
+  const sourceColor = sourceNode ? MODULES.find(m => m.id === sourceNode.data.defId)?.color || '#000' : '#000';
+  const targetColor = targetNode ? MODULES.find(m => m.id === targetNode.data.defId)?.color || '#000' : '#000';
+
+  const [edgePath] = getBezierPath({
+    sourceX,
+    sourceY,
+    sourcePosition,
+    targetX,
+    targetY,
+    targetPosition,
+    curvature: 0.8,
+  });
+
+  return (
+    <>
+      <defs>
+        <linearGradient id={`gradient-${id}`} gradientUnits="userSpaceOnUse" x1={sourceX} y1={sourceY} x2={targetX} y2={targetY}>
+          <stop offset="0%" stopColor={sourceColor} />
+          <stop offset="100%" stopColor={targetColor} />
+        </linearGradient>
+      </defs>
+      <BaseEdge 
+        id={id} 
+        path={edgePath} 
+        style={{ ...style, stroke: `url(#gradient-${id})`, strokeWidth: 5 }} 
+      />
+    </>
+  );
+};
+
 const nodeTypes = {
   brutalNode: BrutalNode,
+};
+
+const edgeTypes = {
+  custom: CustomCurvedEdge,
 };
 
 const FlowCanvasCore = () => {
@@ -51,7 +97,7 @@ const FlowCanvasCore = () => {
   );
 
   return (
-    <div className="flex-1 h-full w-full relative" ref={reactFlowWrapper}>
+    <div className="flex-1 relative" style={{ width: '100%', height: '100%' }} ref={reactFlowWrapper}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -61,10 +107,16 @@ const FlowCanvasCore = () => {
         onDrop={onDrop}
         onDragOver={onDragOver}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         minZoom={0.5}
         maxZoom={2}
         defaultViewport={{ x: 0, y: 0, zoom: 1 }}
         proOptions={{ hideAttribution: true }}
+        defaultEdgeOptions={{ 
+          style: { strokeWidth: 4, stroke: '#000' },
+          type: 'custom'
+        }}
+        connectionLineStyle={{ strokeWidth: 4, stroke: '#000' }}
       >
         <Controls />
       </ReactFlow>
