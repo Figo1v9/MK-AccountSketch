@@ -2,8 +2,6 @@ import { useAccountStore } from '@/store/accountStore';
 import { MODULES } from '@/core/modules';
 import { formatCurrency } from '@/lib/utils';
 import { Download, FileText, FileSpreadsheet } from 'lucide-react';
-import { generatePDF } from '@/lib/pdfExport';
-import { exportToExcelCSV } from '@/features/excel/excelUtils';
 
 export const SummaryPanel = () => {
   const { nodes } = useAccountStore();
@@ -30,13 +28,23 @@ export const SummaryPanel = () => {
     alert('📋 تم نسخ النتائج إلى الحافظة');
   };
 
+  const handleExportPDF = async () => {
+    const module = await import('@/lib/pdfExport');
+    module.generatePDF(nodes);
+  };
+
+  const handleExportExcel = async () => {
+    const module = await import('@/features/excel/excelUtils');
+    module.exportToExcelCSV(nodes);
+  };
+
   return (
     <aside className="brutal-panel relative">
       <div className="panel-header flex justify-between items-center" style={{ textAlign: 'left', display: 'flex' }}>
         <span className="flex-1 text-center">📈 النتائج المباشرة</span>
         <div style={{ display: 'flex', gap: 6 }}>
           <button 
-            onClick={() => generatePDF(nodes)} 
+            onClick={handleExportPDF} 
             title="حفظ كـ PDF" 
             className="bg-white text-black p-1 hover:bg-emerald-300 border-2 border-black rounded-md active:translate-y-1 transition-transform"
             style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontWeight: 700, fontSize: 12 }}
@@ -45,7 +53,7 @@ export const SummaryPanel = () => {
             PDF
           </button>
           <button 
-            onClick={() => exportToExcelCSV(nodes)} 
+            onClick={handleExportExcel} 
             title="تصدير إلى Excel / CSV" 
             className="bg-white text-black p-1 hover:bg-blue-300 border-2 border-black rounded-md active:translate-y-1 transition-transform"
           >

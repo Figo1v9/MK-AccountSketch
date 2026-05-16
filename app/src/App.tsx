@@ -1,16 +1,28 @@
-import { EquationModal } from './features/equations/EquationModal';
+import { Suspense, lazy, useRef } from 'react';
 import { Sidebar } from './features/sidebar/Sidebar';
 import { FlowCanvas } from './features/canvas/FlowCanvas';
 import { SummaryPanel } from './features/summary/SummaryPanel';
 import { OcrModal } from './features/ocr/OcrModal';
-import { StepsModal } from './features/equations/StepsModal';
 import { SettingsModal } from './features/settings/SettingsModal';
 import { useGlobalShortcuts } from './features/settings/useGlobalShortcuts';
 import { useAccountStore } from '@/store/accountStore';
+import { useModalStore } from '@/store/modalStore';
+
+const EquationModal = lazy(() => import('./features/equations/EquationModal').then(module => ({ default: module.EquationModal })));
+const StepsModal = lazy(() => import('./features/equations/StepsModal').then(module => ({ default: module.StepsModal })));
 
 function App() {
   const { clearAll } = useAccountStore();
+  const { isOpen, isStepsOpen } = useModalStore();
   useGlobalShortcuts();
+
+  // Track if modals have ever been opened to avoid loading them before needed,
+  // while preserving the Framer Motion exit animation when they close.
+  const hasOpenedEquation = useRef(false);
+  if (isOpen) hasOpenedEquation.current = true;
+
+  const hasOpenedSteps = useRef(false);
+  if (isStepsOpen) hasOpenedSteps.current = true;
 
   return (
     <>
@@ -47,8 +59,17 @@ function App() {
         <SummaryPanel />
       </div>
       
-      <EquationModal />
-      <StepsModal />
+      {hasOpenedEquation.current && (
+        <Suspense fallback={null}>
+          <EquationModal />
+        </Suspense>
+      )}
+      
+      {hasOpenedSteps.current && (
+        <Suspense fallback={null}>
+          <StepsModal />
+        </Suspense>
+      )}
     </>
   );
 }

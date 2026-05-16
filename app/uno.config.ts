@@ -20,6 +20,7 @@ export default defineConfig({
     }
   },
   rules: [
+    ['font-outfit', { 'font-family': '"Outfit", sans-serif' }],
     ['shadow-brutal-card', { 'box-shadow': '6px 6px 0px #000' }],
     ['shadow-brutal-btn', { 'box-shadow': '4px 4px 0px #000' }],
     ['shadow-brutal-hover', { 'box-shadow': '8px 8px 0px #000' }],
