@@ -32,4 +32,5 @@ export type AccountingNodeData = {
   inheritedKeys?: string[];
   helpersVals?: Record<string, Record<string, unknown>>;
   error?: string;
+  decision?: string;
 };

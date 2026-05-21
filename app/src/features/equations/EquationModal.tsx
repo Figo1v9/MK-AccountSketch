@@ -4,11 +4,16 @@ import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import { useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation, useDynamicTranslation, translateLatex } from '@/lib/i18n';
+
 export const EquationModal = () => {
     const { isOpen, title, latex, closeModal } = useModalStore();
+    const t = useTranslation();
+    const td = useDynamicTranslation();
 
     const htmlMarkup = useMemo(() => {
         if (!latex) return '';
+        const tLatex = translateLatex(latex, td);
         const originalWarn = console.warn;
         let html = '';
         try {
@@ -16,7 +21,7 @@ export const EquationModal = () => {
                 if (typeof args[0] === 'string' && args[0].includes('No character metrics for')) return;
                 originalWarn(...args);
             };
-            html = katex.renderToString(latex, {
+            html = katex.renderToString(tLatex, {
                 throwOnError: false,
                 strict: "ignore",
                 trust: true
@@ -25,7 +30,7 @@ export const EquationModal = () => {
             console.warn = originalWarn;
         }
         return html;
-    }, [latex]);
+    }, [latex, td]);
 
     return (
         <AnimatePresence>
@@ -38,7 +43,7 @@ export const EquationModal = () => {
                         className="equation-modal bg-white border-4 border-black shadow-[8px_8px_0px_#000] max-w-lg w-full p-0 flex flex-col rounded-[16px]"
                     >
                         <div className="equation-header flex justify-between items-center p-4 border-b-4 border-black bg-yellow-300 rounded-t-[12px]">
-                            <h2 className="text-xl font-black">{title}</h2>
+                            <h2 className="text-xl font-black">{td(title)}</h2>
                             <button onClick={closeModal} className="equation-close hover:bg-red-400 p-1 rounded-md border-2 border-transparent hover:border-black transition-all">
                                 <X size={24} strokeWidth={3} />
                             </button>
@@ -50,7 +55,7 @@ export const EquationModal = () => {
                         />
                         <div className="equation-footer p-4 border-t-4 border-black bg-gray-100 flex justify-end rounded-b-[12px]">
                             <button onClick={closeModal} className="equation-footer-btn brutal-btn bg-white">
-                                إغلاق
+                                {t('app.close')}
                             </button>
                         </div>
                     </motion.div>

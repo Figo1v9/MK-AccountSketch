@@ -15,7 +15,6 @@ import {
  * Register Fonts for Arabic Support
  * Note: @react-pdf/renderer requires .ttf files for custom fonts.
  */
-// @ts-expect-error: Vite handles the ?url import correctly
 import cairoFontUrl from '../../public/Cairo-Regular.ttf?url';
 
 Font.register({
@@ -125,7 +124,7 @@ const renderSolutionDocument = ({ nodes }: { nodes: AccountNode[] }) => {
     <Document>
       <Page size="A4" style={styles.page}>
         <View style={styles.header}>
-          <Text style={styles.docTitle}> Mohamed Khedr — AccountSketch</Text>
+          <Text style={styles.docTitle}>Mohamed Khedr — AccountSketch</Text>
           <Text style={styles.docSubtitle}>تقرير مفصل بالخطوات المحاسبية المنظمة</Text>
           <Text style={styles.dateText}>تاريخ التقرير: {dateStr}</Text>
         </View>
@@ -156,7 +155,7 @@ const renderSolutionDocument = ({ nodes }: { nodes: AccountNode[] }) => {
                       <Text>{f.l}</Text>
                     </View>
                     <View style={styles.tableCellValue}>
-                      <Text>{formatCurrency(node.data.vals[f.k]!)} {f.u}</Text>
+                      <Text>{`${formatCurrency(node.data.vals[f.k]!)} ${f.u}`}</Text>
                     </View>
                   </View>
                 ))}

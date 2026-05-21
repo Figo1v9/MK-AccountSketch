@@ -12,7 +12,8 @@ export type StepsData = {
     formula: string, 
     inputs: StepField[], 
     outputs: StepField[],
-    customSteps?: StepDataBlock[] 
+    customSteps?: StepDataBlock[],
+    defId?: string
 };
 
 type ModalState = {

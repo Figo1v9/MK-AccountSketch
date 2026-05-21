@@ -1,9 +1,11 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { MODULES } from '@/core/modules';
 import { useAccountStore, AccountNode } from '@/store/accountStore';
-import { ScanLine, Upload, X, Loader2, Sparkles } from 'lucide-react';
+import { ScanLine, Upload, X, Loader2, Sparkles, AlertTriangle } from 'lucide-react';
+import { useTranslation, useDynamicTranslation, useI18nStore } from '@/lib/i18n';
+import { GoogleIcon } from '@/components/ui/GoogleMulticolorIcons';
 
-const GEMINI_KEY = 'AIzaSyB2q9oxgu7ySyKykHTrND0ja6M97JVWZUQ';
+const GEMINI_KEY = (import.meta.env.VITE_GEMINI_API_KEY as string | undefined) || 'AIzaSyB2q9oxgu7ySyKykHTrND0ja6M97JVWZUQ';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`;
 
 type OcrResult = {
@@ -41,6 +43,18 @@ export const OcrModal = () => {
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const { addNode } = useAccountStore();
+  const t = useTranslation();
+  const td = useDynamicTranslation();
+  const lang = useI18nStore(state => state.lang);
+
+  // Clean up object URL to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (preview) {
+        URL.revokeObjectURL(preview);
+      }
+    };
+  }, [preview]);
 
   const reset = () => {
     setPreview(null);
@@ -100,13 +114,13 @@ export const OcrModal = () => {
 
       // Extract JSON from response (handle markdown code blocks)
       const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error('لم يتم العثور على بيانات صالحة في الرد');
+      if (!jsonMatch) throw new Error(t('ocr.no_valid_data'));
 
       const parsed: OcrResult = JSON.parse(jsonMatch[0]);
       setResult(parsed);
 
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'خطأ غير متوقع';
+      const msg = err instanceof Error ? err.message : t('ocr.unexpected_error');
       setError(msg);
     } finally {
       setLoading(false);
@@ -115,7 +129,7 @@ export const OcrModal = () => {
 
   const handleFile = useCallback((file: File) => {
     if (!file.type.startsWith('image/')) {
-      setError('يرجى رفع صورة فقط');
+      setError(t('ocr.image_only'));
       return;
     }
     processImage(file);
@@ -184,17 +198,8 @@ export const OcrModal = () => {
   if (!isOpen) {
     return (
       <button
-        className="brutal-btn"
+        className="brutal-btn ocr-trigger animate-pulse-subtle"
         onClick={() => setIsOpen(true)}
-        style={{
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-          color: '#fff',
-          border: '3px solid #000',
-          fontWeight: 800,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-        }}
       >
         <ScanLine size={18} strokeWidth={3} />
         OCR
@@ -204,12 +209,12 @@ export const OcrModal = () => {
 
   return (
     <div className="ocr-overlay" onClick={(e) => { if (e.target === e.currentTarget) close(); }}>
-      <div className="ocr-modal">
+      <div className="ocr-modal" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
         {/* Header */}
         <div className="ocr-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <ScanLine size={22} strokeWidth={3} />
-            <span>استخراج البيانات من صورة المسألة</span>
+            <span>{t('ocr.title')}</span>
           </div>
           <button onClick={close} className="ocr-close"><X size={20} /></button>
         </div>
@@ -225,8 +230,8 @@ export const OcrModal = () => {
               onClick={() => fileRef.current?.click()}
             >
               <Upload size={48} strokeWidth={1.5} style={{ opacity: 0.5 }} />
-              <p style={{ fontWeight: 700, fontSize: 18 }}>اسحب صورة المسألة هنا أو الصقها (Ctrl+V)</p>
-              <p style={{ opacity: 0.5, fontSize: 14 }}>أو اضغط لاختيار ملف من الجهاز</p>
+              <p style={{ fontWeight: 700, fontSize: 18 }}>{t('ocr.dropzone_text')}</p>
+              <p style={{ opacity: 0.5, fontSize: 14 }}>{t('ocr.dropzone_hint')}</p>
               <input
                 ref={fileRef}
                 type="file"
@@ -240,8 +245,8 @@ export const OcrModal = () => {
           {loading && (
             <div className="ocr-loading">
               <Loader2 size={40} className="ocr-spin" />
-              <p style={{ fontWeight: 700 }}>جاري تحليل الصورة بالذكاء الاصطناعي...</p>
-              <p style={{ opacity: 0.5, fontSize: 14 }}>Gemini 2.0 Flash</p>
+              <p style={{ fontWeight: 700 }}>{t('ocr.analyzing')}</p>
+              <p style={{ opacity: 0.5, fontSize: 14 }}>Gemini 2.5 Flash</p>
             </div>
           )}
 
@@ -253,8 +258,8 @@ export const OcrModal = () => {
 
           {error && (
             <div className="ocr-error">
-              <span>⚠️ {error}</span>
-              <button onClick={reset} className="brutal-btn" style={{ fontSize: 13, padding: '4px 12px' }}>إعادة المحاولة</button>
+              <span><AlertTriangle size={16} strokeWidth={2.5} style={{ display: 'inline', verticalAlign: '-2px', marginInlineEnd: '4px' }} />{error}</span>
+              <button onClick={reset} className="brutal-btn" style={{ fontSize: 13, padding: '4px 12px' }}>{t('ocr.retry')}</button>
             </div>
           )}
 
@@ -266,16 +271,19 @@ export const OcrModal = () => {
               <div className="ocr-modules-list">
                 {result.modules.map((item, i) => {
                   const def = MODULES.find(m => m.id === item.moduleId);
-                  if (!def) return <div key={i} className="ocr-mod-item ocr-mod-error">موديول غير موجود: {item.moduleId}</div>;
+                  if (!def) return <div key={i} className="ocr-mod-item ocr-mod-error">{t('ocr.module_not_found')}: {item.moduleId}</div>;
                   return (
                     <div key={i} className="ocr-mod-item" style={{ borderColor: def.color }}>
-                      <div className="ocr-mod-title">{def.icon} {def.title}</div>
+                      <div className="ocr-mod-title flex items-center gap-1.5">
+                        <GoogleIcon id={def.id} fallbackEmoji={def.icon} size={18} className="shrink-0" />
+                        <span>{td(def.title)}</span>
+                      </div>
                       <div className="ocr-mod-fields">
                         {Object.entries(item.values).map(([k, v]) => {
                           const fld = def.fields.find(f => f.k === k);
                           return (
                             <div key={k} className="ocr-field-row">
-                              <span>{fld?.l || k}</span>
+                              <span>{fld ? td(fld.l) : k}</span>
                               <span dir="ltr" style={{ fontFamily: 'Outfit' }}>
                                 {typeof v === 'number' ? v.toLocaleString('en-US') : v}
                               </span>
@@ -288,7 +296,7 @@ export const OcrModal = () => {
                 })}
               </div>
               <button className="brutal-btn ocr-apply-btn" onClick={applyResults}>
-                <Sparkles size={16} /> تطبيق على اللوحة
+                <Sparkles size={16} /> {t('ocr.apply')}
               </button>
             </div>
           )}

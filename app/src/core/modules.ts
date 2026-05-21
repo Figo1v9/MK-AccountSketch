@@ -1,7 +1,9 @@
 import { AccountingModuleDef } from './types';
 
 const n = (v: number | null | undefined): boolean => v !== null && v !== undefined && !isNaN(v as number) && String(v) !== '';
-const r = (v: number) => Math.round(v * 100) / 100;
+// Intermediate rounding helper: returns raw high-precision float to prevent cumulative rounding errors.
+// Final outputs are automatically rounded to 2 decimals after calculation completion.
+const r = (v: number) => v;
 
 export const MODULES: AccountingModuleDef[] = [
   {
@@ -1907,4 +1909,1711 @@ export const MODULES: AccountingModuleDef[] = [
     formula: 'النسبة = (البند ÷ الإجمالي) × 100',
     latex: '\\\\text{النسبة} = \\\\frac{\\\\text{البند}}{\\\\text{الإجمالي}} \\\\times 100'
   },
+  // ══════════════════════════════════════════════════════
+  //  المرحلة 4 — نسب مالية أساسية مفقودة
+  // ══════════════════════════════════════════════════════
+  {
+    id: 'interest_coverage', title: 'نسبة تغطية الفوائد', icon: '🛡️', color: '#FF8A80',
+    desc: 'قدرة الشركة على سداد الفوائد من الأرباح التشغيلية',
+    fields:[
+      {k:'ebit',     l:'الربح التشغيلي (EBIT)', u:'ج.م'},
+      {k:'int_exp',  l:'مصاريف الفوائد',        u:'ج.م'},
+      {k:'icr',      l:'نسبة التغطية',          u:'مرة'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error; delete v._decision;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.int_exp) && v.int_exp! <= 0) { v._error = 'مصاريف الفوائد يجب أن تكون أكبر من صفر'; break; }
+        if(n(v.ebit) && n(v.int_exp) && v.int_exp!>0 && !n(v.icr)) { v.icr = r(v.ebit!/v.int_exp!); c=true; }
+        if(n(v.icr) && n(v.int_exp) && !n(v.ebit)) { v.ebit = r(v.icr!*v.int_exp!); c=true; }
+        if(n(v.ebit) && n(v.icr) && v.icr!>0 && !n(v.int_exp)) { v.int_exp = r(v.ebit!/v.icr!); c=true; }
+      }
+      if(n(v.icr)) {
+        if(v.icr! >= 5) v._decision = '🟢 تغطية ممتازة (≥ 5x)';
+        else if(v.icr! >= 2.5) v._decision = '🟡 تغطية مقبولة (2.5-5x)';
+        else if(v.icr! >= 1) v._decision = '🟠 تغطية ضعيفة (1-2.5x)';
+        else v._decision = '🔴 عجز تغطية — خطر تعثر!';
+      }
+      return v;
+    },
+    formula: 'نسبة التغطية = EBIT ÷ مصاريف الفوائد',
+    latex: '\\\\text{ICR} = \\\\frac{\\\\text{EBIT}}{\\\\text{مصاريف الفوائد}}'
+  },
+  {
+    id: 'payables_turnover', title: 'دوران الدائنين', icon: '🏪', color: '#EA80FC',
+    desc: 'كفاءة سداد الموردين ومتوسط فترة السداد',
+    fields:[
+      {k:'purch',    l:'إجمالي المشتريات',     u:'ج.م'},
+      {k:'avg_pay',  l:'متوسط الدائنين',       u:'ج.م'},
+      {k:'pt',       l:'معدل دوران الدائنين',   u:'مرة'},
+      {k:'days',     l:'متوسط فترة السداد',     u:'يوم'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error; delete v._decision;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.purch) && v.purch! < 0) { v._error = 'المشتريات لا يمكن أن تكون سالبة'; break; }
+        if(n(v.avg_pay) && v.avg_pay! <= 0) { v._error = 'متوسط الدائنين يجب أن يكون أكبر من صفر'; break; }
+        if(n(v.purch) && n(v.avg_pay) && v.avg_pay!>0 && !n(v.pt)) { v.pt = r(v.purch!/v.avg_pay!); c=true; }
+        if(n(v.pt) && n(v.avg_pay) && !n(v.purch)) { v.purch = r(v.pt!*v.avg_pay!); c=true; }
+        if(n(v.purch) && n(v.pt) && v.pt!>0 && !n(v.avg_pay)) { v.avg_pay = r(v.purch!/v.pt!); c=true; }
+        if(n(v.pt) && v.pt!>0 && !n(v.days)) { v.days = r(365/v.pt!); c=true; }
+        if(n(v.days) && v.days!>0 && !n(v.pt)) { v.pt = r(365/v.days!); c=true; }
+      }
+      if(n(v.days)) {
+        if(v.days! <= 30) v._decision = '🟢 سداد سريع (≤ 30 يوم)';
+        else if(v.days! <= 60) v._decision = '🟡 سداد مقبول (30-60 يوم)';
+        else v._decision = '🔴 سداد بطيء (> 60 يوم)';
+      }
+      return v;
+    },
+    formula: 'الدوران = المشتريات ÷ متوسط الدائنين | الأيام = 365 ÷ الدوران',
+    latex: '\\\\text{فترة السداد} = \\\\frac{365}{\\\\text{دوران الدائنين}}'
+  },
+  {
+    id: 'debt_ratio', title: 'نسبة الدين للأصول', icon: '📊', color: '#FF80AB',
+    desc: 'نسبة تمويل الأصول بالديون',
+    fields:[
+      {k:'td',     l:'إجمالي الديون',  u:'ج.م'},
+      {k:'ta',     l:'إجمالي الأصول', u:'ج.م'},
+      {k:'dr',     l:'نسبة الدين',     u:'%'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error; delete v._decision;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.td) && v.td! < 0) { v._error = 'الديون لا يمكن أن تكون سالبة'; break; }
+        if(n(v.ta) && v.ta! <= 0) { v._error = 'الأصول يجب أن تكون أكبر من صفر'; break; }
+        if(n(v.td) && n(v.ta) && v.ta!>0 && !n(v.dr)) { v.dr = r((v.td!/v.ta!)*100); c=true; }
+        if(n(v.dr) && n(v.ta) && !n(v.td)) { v.td = r((v.dr!/100)*v.ta!); c=true; }
+        if(n(v.td) && n(v.dr) && v.dr!>0 && !n(v.ta)) { v.ta = r(v.td!/(v.dr!/100)); c=true; }
+      }
+      if(n(v.dr)) {
+        if(v.dr! <= 30) v._decision = '🟢 ديون منخفضة (≤ 30%)';
+        else if(v.dr! <= 50) v._decision = '🟡 ديون متوسطة (30-50%)';
+        else if(v.dr! <= 70) v._decision = '🟠 ديون مرتفعة (50-70%)';
+        else v._decision = '🔴 ديون خطيرة (> 70%)';
+      }
+      return v;
+    },
+    formula: 'نسبة الدين = (إجمالي الديون ÷ إجمالي الأصول) × 100',
+    latex: '\\\\text{Debt Ratio} = \\\\frac{\\\\text{الديون}}{\\\\text{الأصول}} \\\\times 100'
+  },
+  {
+    id: 'cash_conversion', title: 'دورة التحويل النقدي', icon: '🔄', color: '#B388FF',
+    desc: 'CCC — الوقت بين الدفع للموردين واستلام النقد من العملاء',
+    fields:[
+      {k:'dio', l:'أيام المخزون (DIO)',      u:'يوم'},
+      {k:'dso', l:'أيام المدينين (DSO)',      u:'يوم'},
+      {k:'dpo', l:'أيام الدائنين (DPO)',      u:'يوم'},
+      {k:'ccc', l:'دورة التحويل النقدي (CCC)',u:'يوم'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error; delete v._decision;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.dio) && v.dio! < 0) { v._error = 'أيام المخزون لا يمكن أن تكون سالبة'; break; }
+        if(n(v.dso) && v.dso! < 0) { v._error = 'أيام المدينين لا يمكن أن تكون سالبة'; break; }
+        if(n(v.dpo) && v.dpo! < 0) { v._error = 'أيام الدائنين لا يمكن أن تكون سالبة'; break; }
+        if(n(v.dio) && n(v.dso) && n(v.dpo) && !n(v.ccc)) { v.ccc = r(v.dio! + v.dso! - v.dpo!); c=true; }
+        if(n(v.ccc) && n(v.dso) && n(v.dpo) && !n(v.dio)) { v.dio = r(v.ccc! - v.dso! + v.dpo!); c=true; }
+        if(n(v.ccc) && n(v.dio) && n(v.dpo) && !n(v.dso)) { v.dso = r(v.ccc! - v.dio! + v.dpo!); c=true; }
+        if(n(v.ccc) && n(v.dio) && n(v.dso) && !n(v.dpo)) { v.dpo = r(v.dio! + v.dso! - v.ccc!); c=true; }
+      }
+      if(n(v.ccc)) {
+        if(v.ccc! <= 30) v._decision = '🟢 دورة قصيرة — كفاءة عالية (≤ 30 يوم)';
+        else if(v.ccc! <= 60) v._decision = '🟡 دورة متوسطة (30-60 يوم)';
+        else if(v.ccc! <= 90) v._decision = '🟠 دورة طويلة (60-90 يوم)';
+        else v._decision = '🔴 دورة طويلة جداً (> 90 يوم) — ضغط على السيولة';
+      }
+      return v;
+    },
+    formula: 'CCC = أيام المخزون + أيام المدينين − أيام الدائنين',
+    latex: '\\\\text{CCC} = \\\\text{DIO} + \\\\text{DSO} - \\\\text{DPO}'
+  },
+  {
+    id: 'operating_margin', title: 'هامش التشغيل', icon: '⚙️', color: '#82B1FF',
+    desc: 'نسبة الربح التشغيلي من كل جنيه مبيعات',
+    fields:[
+      {k:'ebit', l:'الربح التشغيلي (EBIT)', u:'ج.م'},
+      {k:'rev',  l:'صافي المبيعات',         u:'ج.م'},
+      {k:'opm',  l:'هامش التشغيل',          u:'%'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error; delete v._decision;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.rev) && v.rev! <= 0) { v._error = 'المبيعات يجب أن تكون أكبر من صفر'; break; }
+        if(n(v.ebit) && n(v.rev) && v.rev!>0 && !n(v.opm)) { v.opm = r((v.ebit!/v.rev!)*100); c=true; }
+        if(n(v.opm) && n(v.rev) && !n(v.ebit)) { v.ebit = r((v.opm!/100)*v.rev!); c=true; }
+        if(n(v.opm) && n(v.ebit) && v.opm!>0 && !n(v.rev)) { v.rev = r(v.ebit!/(v.opm!/100)); c=true; }
+      }
+      if(n(v.opm)) {
+        if(v.opm! >= 25) v._decision = '🟢 هامش تشغيلي ممتاز (≥ 25%)';
+        else if(v.opm! >= 15) v._decision = '🟡 هامش تشغيلي جيد (15-25%)';
+        else if(v.opm! >= 5) v._decision = '🟠 هامش تشغيلي ضعيف (5-15%)';
+        else v._decision = '🔴 هامش سلبي أو شبه معدوم';
+      }
+      return v;
+    },
+    formula: 'هامش التشغيل = (EBIT ÷ المبيعات) × 100',
+    latex: '\\\\text{OPM} = \\\\frac{\\\\text{EBIT}}{\\\\text{المبيعات}} \\\\times 100'
+  },
+  {
+    id: 'ebitda_margin', title: 'هامش EBITDA', icon: '📈', color: '#80D8FF',
+    desc: 'الربحية التشغيلية قبل الإهلاك والاستهلاك',
+    fields:[
+      {k:'ebit', l:'الربح التشغيلي (EBIT)',        u:'ج.م'},
+      {k:'dep',  l:'الإهلاك والاستهلاك (D&A)',     u:'ج.م'},
+      {k:'ebitda', l:'EBITDA',                       u:'ج.م'},
+      {k:'rev',  l:'صافي المبيعات',                  u:'ج.م'},
+      {k:'margin', l:'هامش EBITDA',                  u:'%'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error; delete v._decision;
+      if(!n(v.dep)) v.dep = 0;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.rev) && v.rev! <= 0) { v._error = 'المبيعات يجب أن تكون أكبر من صفر'; break; }
+        if(n(v.ebit) && n(v.dep) && !n(v.ebitda)) { v.ebitda = r(v.ebit! + v.dep!); c=true; }
+        if(n(v.ebitda) && n(v.dep) && !n(v.ebit)) { v.ebit = r(v.ebitda! - v.dep!); c=true; }
+        if(n(v.ebitda) && n(v.ebit) && !n(v.dep)) { v.dep = r(v.ebitda! - v.ebit!); c=true; }
+        if(n(v.ebitda) && n(v.rev) && v.rev!>0 && !n(v.margin)) { v.margin = r((v.ebitda!/v.rev!)*100); c=true; }
+        if(n(v.margin) && n(v.rev) && !n(v.ebitda)) { v.ebitda = r((v.margin!/100)*v.rev!); c=true; }
+        if(n(v.margin) && n(v.ebitda) && v.margin!>0 && !n(v.rev)) { v.rev = r(v.ebitda!/(v.margin!/100)); c=true; }
+      }
+      if(n(v.margin)) {
+        if(v.margin! >= 30) v._decision = '🟢 هامش EBITDA ممتاز (≥ 30%)';
+        else if(v.margin! >= 15) v._decision = '🟡 هامش EBITDA جيد (15-30%)';
+        else v._decision = '🔴 هامش EBITDA ضعيف (< 15%)';
+      }
+      return v;
+    },
+    formula: 'EBITDA = EBIT + D&A | الهامش = (EBITDA ÷ المبيعات) × 100',
+    latex: '\\\\text{EBITDA Margin} = \\\\frac{\\\\text{EBIT} + \\\\text{D\\&A}}{\\\\text{المبيعات}} \\\\times 100'
+  },
+  {
+    id: 'roa', title: 'العائد على الأصول', icon: '🏛️', color: '#A7FFEB',
+    desc: 'كفاءة الأصول في توليد الأرباح (ROA مستقل)',
+    fields:[
+      {k:'ni',         l:'صافي الدخل',      u:'ج.م'},
+      {k:'avg_assets', l:'متوسط الأصول',   u:'ج.م'},
+      {k:'roa',        l:'العائد على الأصول',u:'%'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error; delete v._decision;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.avg_assets) && v.avg_assets! <= 0) { v._error = 'متوسط الأصول يجب أن يكون أكبر من صفر'; break; }
+        if(n(v.ni) && n(v.avg_assets) && v.avg_assets!>0 && !n(v.roa)) { v.roa = r((v.ni!/v.avg_assets!)*100); c=true; }
+        if(n(v.roa) && n(v.avg_assets) && !n(v.ni)) { v.ni = r((v.roa!/100)*v.avg_assets!); c=true; }
+        if(n(v.roa) && n(v.ni) && v.roa!>0 && !n(v.avg_assets)) { v.avg_assets = r(v.ni!/(v.roa!/100)); c=true; }
+      }
+      if(n(v.roa)) {
+        if(v.roa! >= 10) v._decision = '🟢 عائد ممتاز (≥ 10%)';
+        else if(v.roa! >= 5) v._decision = '🟡 عائد مقبول (5-10%)';
+        else v._decision = '🔴 عائد ضعيف (< 5%)';
+      }
+      return v;
+    },
+    formula: 'ROA = (صافي الدخل ÷ متوسط الأصول) × 100',
+    latex: '\\\\text{ROA} = \\\\frac{\\\\text{صافي الدخل}}{\\\\text{متوسط الأصول}} \\\\times 100'
+  },
+  {
+    id: 'pe_ratio', title: 'مكرر الأرباح', icon: '💹', color: '#CCFF90',
+    desc: 'سعر السهم مقارنة بربحيته (P/E Ratio)',
+    fields:[
+      {k:'price', l:'سعر السهم السوقي', u:'ج.م'},
+      {k:'eps',   l:'ربحية السهم (EPS)', u:'ج.م'},
+      {k:'pe',    l:'مكرر الأرباح (P/E)',u:'مرة'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error; delete v._decision;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.price) && v.price! < 0) { v._error = 'سعر السهم لا يمكن أن يكون سالباً'; break; }
+        if(n(v.eps) && v.eps! <= 0) { v._error = 'ربحية السهم يجب أن تكون أكبر من صفر'; break; }
+        if(n(v.price) && n(v.eps) && v.eps!>0 && !n(v.pe)) { v.pe = r(v.price!/v.eps!); c=true; }
+        if(n(v.pe) && n(v.eps) && !n(v.price)) { v.price = r(v.pe!*v.eps!); c=true; }
+        if(n(v.price) && n(v.pe) && v.pe!>0 && !n(v.eps)) { v.eps = r(v.price!/v.pe!); c=true; }
+      }
+      if(n(v.pe)) {
+        if(v.pe! <= 10) v._decision = '🟢 سهم رخيص (P/E ≤ 10)';
+        else if(v.pe! <= 20) v._decision = '🟡 تقييم عادل (P/E 10-20)';
+        else if(v.pe! <= 40) v._decision = '🟠 تقييم مرتفع (P/E 20-40)';
+        else v._decision = '🔴 مُبالغ في التقييم (P/E > 40)';
+      }
+      return v;
+    },
+    formula: 'P/E = سعر السهم ÷ ربحية السهم',
+    latex: '\\\\text{P/E} = \\\\frac{\\\\text{سعر السهم}}{\\\\text{EPS}}'
+  },
+  {
+    id: 'book_value_ps', title: 'القيمة الدفترية للسهم', icon: '📖', color: '#F4FF81',
+    desc: 'نصيب السهم من حقوق الملكية',
+    fields:[
+      {k:'eq',     l:'حقوق الملكية',       u:'ج.م'},
+      {k:'pref',   l:'أسهم ممتازة (خصم)',   u:'ج.م'},
+      {k:'shares', l:'عدد الأسهم العادية', u:'سهم'},
+      {k:'bvps',   l:'القيمة الدفترية/سهم', u:'ج.م'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error;
+      if(!n(v.pref)) v.pref = 0;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.shares) && v.shares! <= 0) { v._error = 'عدد الأسهم يجب أن يكون أكبر من صفر'; break; }
+        if(n(v.eq) && n(v.shares) && v.shares!>0 && !n(v.bvps)) { v.bvps = r((v.eq! - (v.pref||0)) / v.shares!); c=true; }
+        if(n(v.bvps) && n(v.shares) && !n(v.eq)) { v.eq = r(v.bvps! * v.shares! + (v.pref||0)); c=true; }
+        if(n(v.eq) && n(v.bvps) && v.bvps!>0 && !n(v.shares)) { v.shares = r((v.eq! - (v.pref||0)) / v.bvps!); c=true; }
+      }
+      return v;
+    },
+    formula: 'BVPS = (حقوق الملكية − أسهم ممتازة) ÷ عدد الأسهم',
+    latex: '\\\\text{BVPS} = \\\\frac{\\\\text{حقوق الملكية} - \\\\text{ممتازة}}{\\\\text{عدد الأسهم}}'
+  },
+  {
+    id: 'pb_ratio', title: 'السعر / القيمة الدفترية', icon: '📐', color: '#84FFFF',
+    desc: 'مقارنة سعر السهم بقيمته الدفترية (P/B)',
+    fields:[
+      {k:'price', l:'سعر السهم السوقي', u:'ج.م'},
+      {k:'bvps',  l:'القيمة الدفترية/سهم', u:'ج.م'},
+      {k:'pb',    l:'نسبة P/B',           u:'مرة'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error; delete v._decision;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.bvps) && v.bvps! <= 0) { v._error = 'القيمة الدفترية يجب أن تكون أكبر من صفر'; break; }
+        if(n(v.price) && n(v.bvps) && v.bvps!>0 && !n(v.pb)) { v.pb = r(v.price!/v.bvps!); c=true; }
+        if(n(v.pb) && n(v.bvps) && !n(v.price)) { v.price = r(v.pb!*v.bvps!); c=true; }
+        if(n(v.price) && n(v.pb) && v.pb!>0 && !n(v.bvps)) { v.bvps = r(v.price!/v.pb!); c=true; }
+      }
+      if(n(v.pb)) {
+        if(v.pb! < 1) v._decision = '🟢 السهم أقل من قيمته الدفترية (P/B < 1)';
+        else if(v.pb! <= 3) v._decision = '🟡 تقييم معقول (P/B 1-3)';
+        else v._decision = '🔴 تقييم مرتفع (P/B > 3)';
+      }
+      return v;
+    },
+    formula: 'P/B = سعر السهم ÷ القيمة الدفترية للسهم',
+    latex: '\\\\text{P/B} = \\\\frac{\\\\text{سعر السوق}}{\\\\text{BVPS}}'
+  },
+  {
+    id: 'dividend_payout', title: 'نسبة توزيع الأرباح', icon: '💵', color: '#B9F6CA',
+    desc: 'نسبة الأرباح الموزعة من صافي الدخل',
+    fields:[
+      {k:'div',  l:'إجمالي التوزيعات', u:'ج.م'},
+      {k:'ni',   l:'صافي الدخل',       u:'ج.م'},
+      {k:'dpr',  l:'نسبة التوزيع',     u:'%'},
+      {k:'rr',   l:'نسبة الاحتفاظ',    u:'%'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error; delete v._decision;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.ni) && v.ni! <= 0) { v._error = 'صافي الدخل يجب أن يكون أكبر من صفر'; break; }
+        if(n(v.div) && v.div! < 0) { v._error = 'التوزيعات لا يمكن أن تكون سالبة'; break; }
+        if(n(v.div) && n(v.ni) && v.ni!>0 && !n(v.dpr)) { v.dpr = r((v.div!/v.ni!)*100); c=true; }
+        if(n(v.dpr) && n(v.ni) && !n(v.div)) { v.div = r((v.dpr!/100)*v.ni!); c=true; }
+        if(n(v.div) && n(v.dpr) && v.dpr!>0 && !n(v.ni)) { v.ni = r(v.div!/(v.dpr!/100)); c=true; }
+        if(n(v.dpr) && !n(v.rr)) { v.rr = r(100 - v.dpr!); c=true; }
+        if(n(v.rr) && !n(v.dpr)) { v.dpr = r(100 - v.rr!); c=true; }
+      }
+      return v;
+    },
+    formula: 'نسبة التوزيع = (التوزيعات ÷ صافي الدخل) × 100 | الاحتفاظ = 100 − التوزيع',
+    latex: '\\\\text{DPR} = \\\\frac{\\\\text{التوزيعات}}{\\\\text{صافي الدخل}} \\\\times 100'
+  },
+  {
+    id: 'dividend_yield', title: 'عائد التوزيعات', icon: '🌿', color: '#69F0AE',
+    desc: 'نسبة العائد النقدي للمستثمر من التوزيعات',
+    fields:[
+      {k:'dps',   l:'توزيعات السهم السنوية', u:'ج.م'},
+      {k:'price', l:'سعر السهم السوقي',      u:'ج.م'},
+      {k:'dy',    l:'عائد التوزيعات',        u:'%'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error; delete v._decision;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.price) && v.price! <= 0) { v._error = 'سعر السهم يجب أن يكون أكبر من صفر'; break; }
+        if(n(v.dps) && v.dps! < 0) { v._error = 'التوزيعات لا يمكن أن تكون سالبة'; break; }
+        if(n(v.dps) && n(v.price) && v.price!>0 && !n(v.dy)) { v.dy = r((v.dps!/v.price!)*100); c=true; }
+        if(n(v.dy) && n(v.price) && !n(v.dps)) { v.dps = r((v.dy!/100)*v.price!); c=true; }
+        if(n(v.dps) && n(v.dy) && v.dy!>0 && !n(v.price)) { v.price = r(v.dps!/(v.dy!/100)); c=true; }
+      }
+      if(n(v.dy)) {
+        if(v.dy! >= 5) v._decision = '🟢 عائد توزيعات مرتفع (≥ 5%)';
+        else if(v.dy! >= 2) v._decision = '🟡 عائد توزيعات معتدل (2-5%)';
+        else v._decision = '🔴 عائد توزيعات منخفض (< 2%)';
+      }
+      return v;
+    },
+    formula: 'عائد التوزيعات = (توزيعات السهم ÷ سعر السوق) × 100',
+    latex: '\\\\text{DY} = \\\\frac{\\\\text{DPS}}{\\\\text{سعر السوق}} \\\\times 100'
+  },
+  // ══════════════════════════════════════════════════════
+  //  المرحلة 5 — التقييم والاستثمار المتقدم
+  // ══════════════════════════════════════════════════════
+  {
+    id: 'capm', title: 'نموذج CAPM', icon: '📐', color: '#FF9E80',
+    desc: 'تسعير الأصول الرأسمالية لتقدير تكلفة حقوق الملكية',
+    fields:[
+      {k:'rf',  l:'معدل العائد الخالي من المخاطر', u:'%'},
+      {k:'beta',l:'معامل بيتا (β)',                u:''},
+      {k:'rm',  l:'عائد السوق المتوقع',            u:'%'},
+      {k:'rp',  l:'علاوة المخاطر (Rm−Rf)',          u:'%'},
+      {k:'ke',  l:'تكلفة حقوق الملكية (Ke)',       u:'%'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error; delete v._decision;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.rf) && v.rf! < 0) { v._error = 'معدل العائد الخالي من المخاطر لا يمكن أن يكون سالباً'; break; }
+        if(n(v.rm) && n(v.rf) && !n(v.rp)) { v.rp = r(v.rm! - v.rf!); c=true; }
+        if(n(v.rp) && n(v.rf) && !n(v.rm)) { v.rm = r(v.rf! + v.rp!); c=true; }
+        if(n(v.rm) && n(v.rp) && !n(v.rf)) { v.rf = r(v.rm! - v.rp!); c=true; }
+        if(n(v.rf) && n(v.beta) && n(v.rp) && !n(v.ke)) { v.ke = r(v.rf! + v.beta! * v.rp!); c=true; }
+        if(n(v.ke) && n(v.rf) && n(v.rp) && v.rp!>0 && !n(v.beta)) { v.beta = r((v.ke! - v.rf!) / v.rp!); c=true; }
+        if(n(v.ke) && n(v.beta) && n(v.rp) && !n(v.rf)) { v.rf = r(v.ke! - v.beta! * v.rp!); c=true; }
+      }
+      if(n(v.beta)) {
+        if(v.beta! < 1) v._decision = '🟢 مخاطر أقل من السوق (β < 1)';
+        else if(v.beta! === 1) v._decision = '🟡 مخاطر مساوية للسوق (β = 1)';
+        else v._decision = '🔴 مخاطر أعلى من السوق (β > 1)';
+      }
+      return v;
+    },
+    formula: 'Ke = Rf + β × (Rm − Rf)',
+    latex: '\\\\text{Ke} = R_f + \\\\beta \\\\times (R_m - R_f)'
+  },
+  {
+    id: 'wacc', title: 'WACC — تكلفة رأس المال', icon: '⚖️', color: '#FFD180',
+    desc: 'المتوسط المرجح لتكلفة رأس المال (حقوق ملكية + ديون)',
+    fields:[
+      {k:'ke',   l:'تكلفة حقوق الملكية (Ke)', u:'%'},
+      {k:'we',   l:'نسبة حقوق الملكية',       u:'%'},
+      {k:'kd',   l:'تكلفة الدين (Kd)',         u:'%'},
+      {k:'wd',   l:'نسبة الديون',              u:'%'},
+      {k:'tax',  l:'معدل الضريبة',             u:'%'},
+      {k:'kd_at',l:'تكلفة الدين بعد الضريبة', u:'%'},
+      {k:'wacc', l:'WACC',                      u:'%'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error; delete v._decision;
+      if(!n(v.tax)) v.tax = 0;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.we) && n(v.wd) && Math.abs(v.we! + v.wd! - 100) > 0.01) {
+          v._error = 'مجموع نسبة الملكية + الديون يجب أن يساوي 100%'; break;
+        }
+        if(n(v.we) && !n(v.wd)) { v.wd = r(100 - v.we!); c=true; }
+        if(n(v.wd) && !n(v.we)) { v.we = r(100 - v.wd!); c=true; }
+        if(n(v.kd) && n(v.tax) && !n(v.kd_at)) { v.kd_at = r(v.kd! * (1 - v.tax!/100)); c=true; }
+        if(n(v.kd_at) && n(v.tax) && (100-v.tax!)>0 && !n(v.kd)) { v.kd = r(v.kd_at! / (1 - v.tax!/100)); c=true; }
+        if(n(v.ke) && n(v.we) && n(v.kd_at) && n(v.wd) && !n(v.wacc)) {
+          v.wacc = r(v.ke! * (v.we!/100) + v.kd_at! * (v.wd!/100)); c=true;
+        }
+      }
+      return v;
+    },
+    formula: 'WACC = Ke×We + Kd×(1−T)×Wd',
+    latex: '\\\\text{WACC} = K_e \\\\times W_e + K_d(1-T) \\\\times W_d'
+  },
+  {
+    id: 'irr', title: 'معدل العائد الداخلي', icon: '🎯', color: '#FF8A65',
+    desc: 'IRR — المعدل الذي يجعل NPV = صفر (Newton-Raphson)',
+    fields:[
+      {k:'invest',  l:'الاستثمار الأولي',       u:'ج.م'},
+      {k:'cf1',     l:'تدفق السنة 1',           u:'ج.م'},
+      {k:'cf2',     l:'تدفق السنة 2',           u:'ج.م'},
+      {k:'cf3',     l:'تدفق السنة 3',           u:'ج.م'},
+      {k:'cf4',     l:'تدفق السنة 4',           u:'ج.م'},
+      {k:'cf5',     l:'تدفق السنة 5',           u:'ج.م'},
+      {k:'irr_val', l:'معدل العائد الداخلي IRR', u:'%'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error; delete v._decision;
+      if(!n(v.invest) || v.invest! <= 0) { if(n(v.invest)) v._error = 'الاستثمار يجب أن يكون أكبر من صفر'; return v; }
+      const cfs: number[] = [-v.invest!];
+      const cfKeys = ['cf1','cf2','cf3','cf4','cf5'];
+      let hasCF = false;
+      for(const k of cfKeys) {
+        if(n(v[k])) { cfs.push(v[k]!); hasCF = true; }
+        else break;
+      }
+      if(!hasCF) return v;
+      // Newton-Raphson IRR calculation
+      const npvAt = (rate: number): number => {
+        let s = 0;
+        for(let t=0; t<cfs.length; t++) s += cfs[t] / Math.pow(1+rate, t);
+        return s;
+      };
+      const dnpvAt = (rate: number): number => {
+        let s = 0;
+        for(let t=1; t<cfs.length; t++) s += -t * cfs[t] / Math.pow(1+rate, t+1);
+        return s;
+      };
+      let guess = 0.1;
+      for(let iter=0; iter<200; iter++){
+        const f = npvAt(guess);
+        const df = dnpvAt(guess);
+        if(Math.abs(df) < 1e-14) break;
+        const next = guess - f / df;
+        if(Math.abs(next - guess) < 1e-10) { guess = next; break; }
+        guess = next;
+        if(guess < -0.99) { guess = -0.99; break; }
+        if(guess > 10) { guess = 10; break; }
+      }
+      if(!n(v.irr_val)) v.irr_val = r(guess * 100);
+      if(n(v.irr_val)) {
+        if(v.irr_val! >= 20) v._decision = '🟢 IRR ممتاز (≥ 20%)';
+        else if(v.irr_val! >= 10) v._decision = '🟡 IRR مقبول (10-20%)';
+        else if(v.irr_val! >= 0) v._decision = '🟠 IRR ضعيف (0-10%)';
+        else v._decision = '🔴 IRR سالب — المشروع غير مجدي';
+      }
+      return v;
+    },
+    formula: 'IRR هو المعدل الذي يجعل NPV = 0 | يُحسب بخوارزمية Newton-Raphson',
+    latex: '\\\\sum_{t=0}^{n} \\\\frac{CF_t}{(1+IRR)^t} = 0'
+  },
+  {
+    id: 'npv_uneven', title: 'NPV تدفقات غير متساوية', icon: '📊', color: '#FFE57F',
+    desc: 'صافي القيمة الحالية لتدفقات مختلفة كل سنة',
+    fields:[
+      {k:'invest', l:'الاستثمار الأولي',   u:'ج.م'},
+      {k:'rate',   l:'معدل الخصم',          u:'%'},
+      {k:'cf1',    l:'تدفق السنة 1',        u:'ج.م'},
+      {k:'cf2',    l:'تدفق السنة 2',        u:'ج.م'},
+      {k:'cf3',    l:'تدفق السنة 3',        u:'ج.م'},
+      {k:'cf4',    l:'تدفق السنة 4',        u:'ج.م'},
+      {k:'cf5',    l:'تدفق السنة 5',        u:'ج.م'},
+      {k:'pv_total',l:'إجمالي PV للتدفقات',u:'ج.م'},
+      {k:'npv',    l:'صافي القيمة الحالية', u:'ج.م'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error; delete v._decision;
+      if(n(v.rate) && v.rate! < 0) { v._error = 'معدل الخصم لا يمكن أن يكون سالباً'; return v; }
+      const rr = n(v.rate) ? v.rate!/100 : null;
+      if(rr === null) return v;
+      const cfKeys = ['cf1','cf2','cf3','cf4','cf5'];
+      let pvSum = 0;
+      let hasCF = false;
+      for(let t=0; t<cfKeys.length; t++) {
+        if(n(v[cfKeys[t]])) {
+          pvSum += v[cfKeys[t]]! / Math.pow(1+rr, t+1);
+          hasCF = true;
+        }
+      }
+      if(!hasCF) return v;
+      if(!n(v.pv_total)) v.pv_total = r(pvSum);
+      if(n(v.pv_total) && n(v.invest) && !n(v.npv)) v.npv = r(v.pv_total! - v.invest!);
+      if(n(v.npv)) {
+        if(v.npv! > 0) v._decision = '🟢 NPV موجب — مشروع مجدي';
+        else if(v.npv! < 0) v._decision = '🔴 NPV سالب — مشروع غير مجدي';
+        else v._decision = '🟡 NPV = صفر — عائد يساوي تكلفة رأس المال';
+      }
+      return v;
+    },
+    formula: 'NPV = Σ(CFt/(1+r)^t) − الاستثمار',
+    latex: '\\\\text{NPV} = \\\\sum_{t=1}^{n} \\\\frac{CF_t}{(1+r)^t} - I_0'
+  },
+  {
+    id: 'eva', title: 'القيمة الاقتصادية المضافة', icon: '💎', color: '#FF80AB',
+    desc: 'EVA — هل الشركة تخلق قيمة فعلية لمساهميها؟',
+    fields:[
+      {k:'nopat',  l:'صافي الربح التشغيلي بعد الضريبة', u:'ج.م'},
+      {k:'capital',l:'رأس المال المستثمر',              u:'ج.م'},
+      {k:'wacc',   l:'WACC',                             u:'%'},
+      {k:'cap_charge',l:'تكلفة رأس المال',              u:'ج.م'},
+      {k:'eva',    l:'EVA',                               u:'ج.م'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error; delete v._decision;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.capital) && v.capital! < 0) { v._error = 'رأس المال لا يمكن أن يكون سالباً'; break; }
+        if(n(v.capital) && n(v.wacc) && !n(v.cap_charge)) { v.cap_charge = r(v.capital! * (v.wacc!/100)); c=true; }
+        if(n(v.cap_charge) && n(v.wacc) && v.wacc!>0 && !n(v.capital)) { v.capital = r(v.cap_charge! / (v.wacc!/100)); c=true; }
+        if(n(v.cap_charge) && n(v.capital) && v.capital!>0 && !n(v.wacc)) { v.wacc = r((v.cap_charge!/v.capital!)*100); c=true; }
+        if(n(v.nopat) && n(v.cap_charge) && !n(v.eva)) { v.eva = r(v.nopat! - v.cap_charge!); c=true; }
+        if(n(v.eva) && n(v.cap_charge) && !n(v.nopat)) { v.nopat = r(v.eva! + v.cap_charge!); c=true; }
+        if(n(v.eva) && n(v.nopat) && !n(v.cap_charge)) { v.cap_charge = r(v.nopat! - v.eva!); c=true; }
+      }
+      if(n(v.eva)) {
+        if(v.eva! > 0) v._decision = '🟢 الشركة تخلق قيمة — EVA موجب بـ ' + v.eva! + ' ج.م';
+        else if(v.eva! < 0) v._decision = '🔴 الشركة تدمر قيمة — EVA سالب بـ ' + Math.abs(v.eva!) + ' ج.م';
+        else v._decision = '🟡 EVA = صفر — لا قيمة مضافة';
+      }
+      return v;
+    },
+    formula: 'EVA = NOPAT − (Capital × WACC)',
+    latex: '\\\\text{EVA} = \\\\text{NOPAT} - (\\\\text{Capital} \\\\times \\\\text{WACC})'
+  },
+  {
+    id: 'fcf', title: 'التدفق النقدي الحر', icon: '💸', color: '#A7FFEB',
+    desc: 'FCF — النقد المتاح بعد الإنفاق الرأسمالي',
+    fields:[
+      {k:'ocf',   l:'التدفق النقدي التشغيلي', u:'ج.م'},
+      {k:'capex', l:'الإنفاق الرأسمالي (CapEx)',u:'ج.م'},
+      {k:'fcf',   l:'التدفق النقدي الحر (FCF)', u:'ج.م'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error; delete v._decision;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.capex) && v.capex! < 0) { v._error = 'الإنفاق الرأسمالي لا يمكن أن يكون سالباً'; break; }
+        if(n(v.ocf) && n(v.capex) && !n(v.fcf)) { v.fcf = r(v.ocf! - v.capex!); c=true; }
+        if(n(v.fcf) && n(v.capex) && !n(v.ocf)) { v.ocf = r(v.fcf! + v.capex!); c=true; }
+        if(n(v.ocf) && n(v.fcf) && !n(v.capex)) { v.capex = r(v.ocf! - v.fcf!); c=true; }
+      }
+      if(n(v.fcf)) {
+        if(v.fcf! > 0) v._decision = '🟢 تدفق حر موجب — قدرة على التوزيع والنمو';
+        else v._decision = '🔴 تدفق حر سالب — الشركة تستهلك أكثر مما تولد';
+      }
+      return v;
+    },
+    formula: 'FCF = التدفق التشغيلي − الإنفاق الرأسمالي',
+    latex: '\\\\text{FCF} = \\\\text{OCF} - \\\\text{CapEx}'
+  },
+  {
+    id: 'dcf', title: 'تقييم DCF', icon: '🏆', color: '#FFD740',
+    desc: 'تقييم الشركة بالتدفقات النقدية المخصومة + القيمة النهائية',
+    fields:[
+      {k:'fcf',    l:'التدفق الحر السنوي الحالي', u:'ج.م'},
+      {k:'g',      l:'معدل النمو',                u:'%'},
+      {k:'wacc',   l:'WACC (معدل الخصم)',          u:'%'},
+      {k:'n',      l:'سنوات التوقع',               u:'سنة'},
+      {k:'pv_fcf', l:'PV التدفقات المتوقعة',       u:'ج.م'},
+      {k:'tv',     l:'القيمة النهائية (Terminal)',   u:'ج.م'},
+      {k:'pv_tv',  l:'PV القيمة النهائية',          u:'ج.م'},
+      {k:'ev',     l:'قيمة المنشأة (EV)',           u:'ج.م'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error; delete v._decision;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.wacc) && n(v.g) && v.wacc! <= v.g!) { v._error = 'WACC يجب أن يكون أكبر من معدل النمو (شرط Gordon)'; break; }
+        if(n(v.n) && v.n! <= 0) { v._error = 'عدد السنوات يجب أن يكون أكبر من صفر'; break; }
+        if(n(v.fcf) && v.fcf! < 0) { v._error = 'التدفق الحر لا يمكن أن يكون سالباً'; break; }
+        const rr = n(v.wacc) ? v.wacc!/100 : null;
+        const gg = n(v.g) ? v.g!/100 : null;
+        // PV of growing FCFs
+        if(n(v.fcf) && rr !== null && gg !== null && n(v.n) && !n(v.pv_fcf)) {
+          let pv = 0;
+          let cf = v.fcf!;
+          for(let t=1; t<=v.n!; t++){
+            cf = (t === 1) ? v.fcf! * (1+gg) : cf * (1+gg);
+            pv += cf / Math.pow(1+rr, t);
+          }
+          v.pv_fcf = r(pv); c=true;
+        }
+        // Terminal Value (Gordon Growth)
+        if(n(v.fcf) && rr !== null && gg !== null && n(v.n) && (rr-gg)>0 && !n(v.tv)) {
+          let lastFCF = v.fcf!;
+          for(let t=0; t<v.n!; t++) lastFCF *= (1+gg);
+          v.tv = r(lastFCF * (1+gg) / (rr - gg)); c=true;
+        }
+        // PV of TV
+        if(n(v.tv) && rr !== null && n(v.n) && !n(v.pv_tv)) {
+          v.pv_tv = r(v.tv! / Math.pow(1+rr, v.n!)); c=true;
+        }
+        // Enterprise Value
+        if(n(v.pv_fcf) && n(v.pv_tv) && !n(v.ev)) { v.ev = r(v.pv_fcf! + v.pv_tv!); c=true; }
+      }
+      return v;
+    },
+    formula: 'EV = PV(FCFs) + PV(Terminal Value) | TV = FCF(1+g)/(WACC−g)',
+    latex: '\\\\text{EV} = \\\\sum \\\\frac{FCF(1+g)^t}{(1+WACC)^t} + \\\\frac{TV}{(1+WACC)^n}'
+  },
+  {
+    id: 'profitability_index', title: 'مؤشر الربحية', icon: '📊', color: '#80CBC4',
+    desc: 'PI — العائد لكل جنيه استثمار لترتيب المشاريع',
+    fields:[
+      {k:'pv_cf',  l:'PV التدفقات المستقبلية', u:'ج.م'},
+      {k:'invest', l:'الاستثمار الأولي',        u:'ج.م'},
+      {k:'pi',     l:'مؤشر الربحية (PI)',       u:''},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error; delete v._decision;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.invest) && v.invest! <= 0) { v._error = 'الاستثمار يجب أن يكون أكبر من صفر'; break; }
+        if(n(v.pv_cf) && n(v.invest) && v.invest!>0 && !n(v.pi)) { v.pi = r(v.pv_cf!/v.invest!); c=true; }
+        if(n(v.pi) && n(v.invest) && !n(v.pv_cf)) { v.pv_cf = r(v.pi!*v.invest!); c=true; }
+        if(n(v.pv_cf) && n(v.pi) && v.pi!>0 && !n(v.invest)) { v.invest = r(v.pv_cf!/v.pi!); c=true; }
+      }
+      if(n(v.pi)) {
+        if(v.pi! > 1) v._decision = '🟢 مشروع مجدي (PI > 1)';
+        else if(v.pi! === 1) v._decision = '🟡 نقطة التعادل (PI = 1)';
+        else v._decision = '🔴 مشروع غير مجدي (PI < 1)';
+      }
+      return v;
+    },
+    formula: 'PI = PV(التدفقات) ÷ الاستثمار',
+    latex: '\\\\text{PI} = \\\\frac{\\\\text{PV(CFs)}}{\\\\text{I_0}}'
+  },
+  {
+    id: 'discounted_payback', title: 'فترة الاسترداد المخصومة', icon: '⏳', color: '#E6EE9C',
+    desc: 'فترة استرداد الاستثمار مع مراعاة القيمة الزمنية للنقود',
+    fields:[
+      {k:'invest',    l:'الاستثمار الأولي',     u:'ج.م'},
+      {k:'annual_cf', l:'التدفق النقدي السنوي', u:'ج.م'},
+      {k:'rate',      l:'معدل الخصم',            u:'%'},
+      {k:'dpb',       l:'فترة الاسترداد المخصومة',u:'سنة'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error; delete v._decision;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.invest) && v.invest! <= 0) { v._error = 'الاستثمار يجب أن يكون أكبر من صفر'; break; }
+        if(n(v.annual_cf) && v.annual_cf! <= 0) { v._error = 'التدفق النقدي يجب أن يكون أكبر من صفر'; break; }
+        if(n(v.rate) && v.rate! < 0) { v._error = 'معدل الخصم لا يمكن أن يكون سالباً'; break; }
+        if(n(v.invest) && n(v.annual_cf) && n(v.rate) && !n(v.dpb)) {
+          const rr = v.rate!/100;
+          let cumPV = 0;
+          let found = false;
+          for(let t=1; t<=100; t++) {
+            cumPV += v.annual_cf! / Math.pow(1+rr, t);
+            if(cumPV >= v.invest!) {
+              const prevCum = cumPV - v.annual_cf! / Math.pow(1+rr, t);
+              const remaining = v.invest! - prevCum;
+              const pvThisYear = v.annual_cf! / Math.pow(1+rr, t);
+              v.dpb = r(t - 1 + remaining / pvThisYear);
+              found = true;
+              break;
+            }
+          }
+          if(!found) v._error = 'الاستثمار لا يُسترد خلال 100 سنة';
+          c=true;
+        }
+      }
+      if(n(v.dpb)) {
+        if(v.dpb! <= 3) v._decision = '🟢 استرداد سريع (≤ 3 سنوات)';
+        else if(v.dpb! <= 5) v._decision = '🟡 استرداد متوسط (3-5 سنوات)';
+        else v._decision = '🔴 استرداد بطيء (> 5 سنوات)';
+      }
+      return v;
+    },
+    formula: 'مثل Payback لكن التدفقات تُخصم بمعدل r',
+    latex: '\\\\sum_{t=1}^{DPB} \\\\frac{CF}{(1+r)^t} = I_0'
+  },
+  {
+    id: 'terminal_value', title: 'القيمة النهائية', icon: '🏁', color: '#FFD180',
+    desc: 'Terminal Value — قيمة الشركة بعد فترة التوقع (Gordon Growth)',
+    fields:[
+      {k:'fcf',  l:'آخر تدفق حر متوقع',     u:'ج.م'},
+      {k:'g',    l:'معدل النمو الدائم',       u:'%'},
+      {k:'wacc', l:'WACC (معدل الخصم)',        u:'%'},
+      {k:'tv',   l:'القيمة النهائية',          u:'ج.م'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.wacc) && n(v.g) && v.wacc! <= v.g!) { v._error = 'WACC يجب أن يكون أكبر من معدل النمو'; break; }
+        if(n(v.fcf) && v.fcf! < 0) { v._error = 'التدفق الحر لا يمكن أن يكون سالباً'; break; }
+        const rr = n(v.wacc) ? v.wacc!/100 : null;
+        const gg = n(v.g) ? v.g!/100 : null;
+        if(n(v.fcf) && rr !== null && gg !== null && (rr-gg)>0 && !n(v.tv)) {
+          v.tv = r(v.fcf! * (1+gg) / (rr - gg)); c=true;
+        }
+        if(n(v.tv) && rr !== null && gg !== null && (rr-gg)>0 && !n(v.fcf)) {
+          v.fcf = r(v.tv! * (rr - gg) / (1+gg)); c=true;
+        }
+      }
+      return v;
+    },
+    formula: 'TV = FCF × (1+g) ÷ (WACC − g)',
+    latex: '\\\\text{TV} = \\\\frac{\\\\text{FCF} \\\\times (1+g)}{\\\\text{WACC} - g}'
+  },
+  // ══════════════════════════════════════════════════════
+  //  المرحلة 6 — الضرائب المتقدمة
+  // ══════════════════════════════════════════════════════
+  {
+    id: 'progressive_tax', title: 'ضريبة الدخل التصاعدية', icon: '🏛️', color: '#FFAB91',
+    desc: 'حساب الضريبة على شرائح الدخل المتصاعدة',
+    fields:[
+      {k:'income',   l:'الدخل الخاضع للضريبة',u:'ج.م'},
+      {k:'exempt',   l:'حد الإعفاء',           u:'ج.م'},
+      {k:'rate1',    l:'نسبة الشريحة 1',       u:'%'},
+      {k:'limit1',   l:'حد الشريحة 1',         u:'ج.م'},
+      {k:'rate2',    l:'نسبة الشريحة 2',       u:'%'},
+      {k:'limit2',   l:'حد الشريحة 2',         u:'ج.م'},
+      {k:'rate3',    l:'نسبة الشريحة 3 (المتبقي)',u:'%'},
+      {k:'tax',      l:'إجمالي الضريبة',       u:'ج.م'},
+      {k:'eff_rate', l:'المعدل الفعلي',        u:'%'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error;
+      if(!n(v.exempt)) v.exempt = 0;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.income) && v.income! < 0) { v._error = 'الدخل لا يمكن أن يكون سالباً'; break; }
+        if(n(v.income) && n(v.rate1) && n(v.limit1) && n(v.rate2) && n(v.limit2) && n(v.rate3) && !n(v.tax)) {
+          let taxable = v.income! - (v.exempt||0);
+          if(taxable < 0) taxable = 0;
+          let tax = 0;
+          // Bracket 1
+          const b1 = Math.min(taxable, v.limit1!);
+          tax += b1 * (v.rate1!/100);
+          taxable -= b1;
+          // Bracket 2
+          if(taxable > 0) {
+            const b2 = Math.min(taxable, v.limit2! - v.limit1!);
+            tax += b2 * (v.rate2!/100);
+            taxable -= b2;
+          }
+          // Bracket 3 (remainder)
+          if(taxable > 0) {
+            tax += taxable * (v.rate3!/100);
+          }
+          v.tax = r(tax); c=true;
+        }
+        if(n(v.tax) && n(v.income) && v.income!>0 && !n(v.eff_rate)) {
+          v.eff_rate = r((v.tax!/v.income!)*100); c=true;
+        }
+      }
+      return v;
+    },
+    formula: 'الضريبة = مجموع (كل شريحة × نسبتها) | المعدل الفعلي = الضريبة ÷ الدخل',
+    latex: '\\\\text{Tax} = \\\\sum (\\\\text{شريحة}_i \\\\times \\\\text{نسبة}_i)'
+  },
+  {
+    id: 'deferred_tax', title: 'الضريبة المؤجلة', icon: '📋', color: '#BCAAA4',
+    desc: 'الفرق بين الضريبة المحاسبية والضريبية (مؤجلة/مدفوعة مقدماً)',
+    fields:[
+      {k:'book_inc',l:'الدخل المحاسبي',          u:'ج.م'},
+      {k:'tax_inc', l:'الدخل الضريبي',            u:'ج.م'},
+      {k:'temp_diff',l:'الفرق المؤقت',             u:'ج.م'},
+      {k:'tax_rate',l:'معدل الضريبة',             u:'%'},
+      {k:'dtl',     l:'التزام ضريبي مؤجل (DTL)', u:'ج.م'},
+      {k:'dta',     l:'أصل ضريبي مؤجل (DTA)',    u:'ج.م'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error; delete v._decision;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.tax_rate) && (v.tax_rate! < 0 || v.tax_rate! > 100)) { v._error = 'معدل الضريبة يجب أن يكون بين 0 و 100%'; break; }
+        if(n(v.book_inc) && n(v.tax_inc) && !n(v.temp_diff)) { v.temp_diff = r(v.book_inc! - v.tax_inc!); c=true; }
+        if(n(v.temp_diff) && n(v.tax_inc) && !n(v.book_inc)) { v.book_inc = r(v.temp_diff! + v.tax_inc!); c=true; }
+        if(n(v.temp_diff) && n(v.book_inc) && !n(v.tax_inc)) { v.tax_inc = r(v.book_inc! - v.temp_diff!); c=true; }
+        if(n(v.temp_diff) && n(v.tax_rate)) {
+          if(v.temp_diff! > 0 && !n(v.dtl)) { v.dtl = r(v.temp_diff! * (v.tax_rate!/100)); v.dta = 0; c=true; }
+          if(v.temp_diff! < 0 && !n(v.dta)) { v.dta = r(Math.abs(v.temp_diff!) * (v.tax_rate!/100)); v.dtl = 0; c=true; }
+          if(v.temp_diff! === 0) { v.dtl = 0; v.dta = 0; c=true; }
+        }
+      }
+      if(n(v.temp_diff)) {
+        if(v.temp_diff! > 0) v._decision = '📊 فرق موجب → التزام ضريبي مؤجل (DTL)';
+        else if(v.temp_diff! < 0) v._decision = '📊 فرق سالب → أصل ضريبي مؤجل (DTA)';
+        else v._decision = '✅ لا يوجد فرق مؤقت';
+      }
+      return v;
+    },
+    formula: 'الفرق المؤقت = دخل محاسبي − دخل ضريبي | DTL/DTA = الفرق × معدل الضريبة',
+    latex: '\\\\text{DTL} = (\\\\text{محاسبي} - \\\\text{ضريبي}) \\\\times T'
+  },
+  {
+    id: 'effective_tax_rate', title: 'معدل الضريبة الفعلي', icon: '📊', color: '#D7CCC8',
+    desc: 'المعدل الحقيقي للضريبة المدفوعة من الدخل',
+    fields:[
+      {k:'tax_exp', l:'مصروف الضريبة',       u:'ج.م'},
+      {k:'ebt',     l:'الدخل قبل الضريبة',   u:'ج.م'},
+      {k:'etr',     l:'المعدل الفعلي',        u:'%'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.ebt) && v.ebt! <= 0) { v._error = 'الدخل قبل الضريبة يجب أن يكون أكبر من صفر'; break; }
+        if(n(v.tax_exp) && n(v.ebt) && v.ebt!>0 && !n(v.etr)) { v.etr = r((v.tax_exp!/v.ebt!)*100); c=true; }
+        if(n(v.etr) && n(v.ebt) && !n(v.tax_exp)) { v.tax_exp = r((v.etr!/100)*v.ebt!); c=true; }
+        if(n(v.tax_exp) && n(v.etr) && v.etr!>0 && !n(v.ebt)) { v.ebt = r(v.tax_exp!/(v.etr!/100)); c=true; }
+      }
+      return v;
+    },
+    formula: 'ETR = (مصروف الضريبة ÷ الدخل قبل الضريبة) × 100',
+    latex: '\\\\text{ETR} = \\\\frac{\\\\text{مصروف الضريبة}}{\\\\text{EBT}} \\\\times 100'
+  },
+  {
+    id: 'tax_shield', title: 'الدرع الضريبي', icon: '🛡️', color: '#CFD8DC',
+    desc: 'الوفر الضريبي من تكلفة الفوائد على الديون',
+    fields:[
+      {k:'int_exp', l:'مصاريف الفوائد',    u:'ج.م'},
+      {k:'dep_exp', l:'مصروف الإهلاك',      u:'ج.م'},
+      {k:'tax_rate',l:'معدل الضريبة',       u:'%'},
+      {k:'shield',  l:'إجمالي الدرع الضريبي',u:'ج.م'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error;
+      if(!n(v.dep_exp)) v.dep_exp = 0;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.tax_rate) && (v.tax_rate! < 0 || v.tax_rate! > 100)) { v._error = 'المعدل يجب أن يكون بين 0 و 100'; break; }
+        if(n(v.int_exp) && n(v.tax_rate) && !n(v.shield)) {
+          v.shield = r((v.int_exp! + (v.dep_exp||0)) * (v.tax_rate!/100)); c=true;
+        }
+      }
+      return v;
+    },
+    formula: 'الدرع = (فوائد + إهلاك) × معدل الضريبة',
+    latex: '\\\\text{Shield} = (\\\\text{Int} + \\\\text{Dep}) \\\\times T'
+  },
+  // ══════════════════════════════════════════════════════
+  //  المرحلة 7 — الموازنات والتخطيط المتقدم
+  // ══════════════════════════════════════════════════════
+  {
+    id: 'flex_budget', title: 'الموازنة المرنة', icon: '📏', color: '#B2DFDB',
+    desc: 'إعادة حساب الموازنة على حجم النشاط الفعلي',
+    fields:[
+      {k:'vc_pu',    l:'التكلفة المتغيرة للوحدة', u:'ج.م'},
+      {k:'fc',       l:'إجمالي التكاليف الثابتة', u:'ج.م'},
+      {k:'act_qty',  l:'الحجم الفعلي',             u:'وحدة'},
+      {k:'flex_vc',  l:'إجمالي متغيرة مرنة',      u:'ج.م'},
+      {k:'flex_total',l:'إجمالي الموازنة المرنة',  u:'ج.م'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.act_qty) && v.act_qty! < 0) { v._error = 'الحجم الفعلي لا يمكن أن يكون سالباً'; break; }
+        if(n(v.vc_pu) && n(v.act_qty) && !n(v.flex_vc)) { v.flex_vc = r(v.vc_pu! * v.act_qty!); c=true; }
+        if(n(v.flex_vc) && n(v.act_qty) && v.act_qty!>0 && !n(v.vc_pu)) { v.vc_pu = r(v.flex_vc! / v.act_qty!); c=true; }
+        if(n(v.flex_vc) && n(v.fc) && !n(v.flex_total)) { v.flex_total = r(v.flex_vc! + v.fc!); c=true; }
+        if(n(v.flex_total) && n(v.fc) && !n(v.flex_vc)) { v.flex_vc = r(v.flex_total! - v.fc!); c=true; }
+        if(n(v.flex_total) && n(v.flex_vc) && !n(v.fc)) { v.fc = r(v.flex_total! - v.flex_vc!); c=true; }
+      }
+      return v;
+    },
+    formula: 'الموازنة المرنة = (ت. متغيرة × الحجم الفعلي) + ت. ثابتة',
+    latex: '\\\\text{Flex} = (\\\\text{VC/u} \\\\times \\\\text{حجم فعلي}) + \\\\text{FC}'
+  },
+  {
+    id: 'flex_budget_var', title: 'انحرافات الموازنة المرنة', icon: '📐', color: '#C8E6C9',
+    desc: 'مقارنة الفعلي بالموازنة المرنة والأصلية',
+    fields:[
+      {k:'static_b',  l:'الموازنة الأصلية (ثابتة)', u:'ج.م'},
+      {k:'flex_b',    l:'الموازنة المرنة',           u:'ج.م'},
+      {k:'actual',    l:'التكلفة الفعلية',            u:'ج.م'},
+      {k:'vol_var',   l:'انحراف الحجم (ثابتة−مرنة)', u:'ج.م'},
+      {k:'spend_var', l:'انحراف الإنفاق (مرنة−فعلي)', u:'ج.م'},
+      {k:'total_var', l:'إجمالي الانحراف',            u:'ج.م'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error; delete v._decision;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.static_b) && n(v.flex_b) && !n(v.vol_var)) { v.vol_var = r(v.static_b! - v.flex_b!); c=true; }
+        if(n(v.flex_b) && n(v.actual) && !n(v.spend_var)) { v.spend_var = r(v.flex_b! - v.actual!); c=true; }
+        if(n(v.vol_var) && n(v.spend_var) && !n(v.total_var)) { v.total_var = r(v.vol_var! + v.spend_var!); c=true; }
+        if(n(v.static_b) && n(v.actual) && !n(v.total_var)) { v.total_var = r(v.static_b! - v.actual!); c=true; }
+        if(n(v.total_var) && n(v.vol_var) && !n(v.spend_var)) { v.spend_var = r(v.total_var! - v.vol_var!); c=true; }
+        if(n(v.total_var) && n(v.spend_var) && !n(v.vol_var)) { v.vol_var = r(v.total_var! - v.spend_var!); c=true; }
+        if(n(v.vol_var) && n(v.flex_b) && !n(v.static_b)) { v.static_b = r(v.flex_b! + v.vol_var!); c=true; }
+        if(n(v.spend_var) && n(v.actual) && !n(v.flex_b)) { v.flex_b = r(v.actual! + v.spend_var!); c=true; }
+      }
+      if(n(v.total_var)) {
+        if(v.total_var! > 0) v._decision = '🟢 انحراف مؤاتٍ (وفر) بقيمة ' + v.total_var! + ' ج.م';
+        else if(v.total_var! < 0) v._decision = '🔴 انحراف غير مؤاتٍ (تجاوز) بقيمة ' + Math.abs(v.total_var!) + ' ج.م';
+        else v._decision = '✅ لا يوجد انحراف';
+      }
+      return v;
+    },
+    formula: 'انحراف الحجم = ثابتة − مرنة | الإنفاق = مرنة − فعلي | الإجمالي = ثابتة − فعلي',
+    latex: '\\\\text{الإجمالي} = \\\\text{الثابتة} - \\\\text{الفعلي}'
+  },
+  {
+    id: 'sensitivity', title: 'تحليل الحساسية', icon: '🔍', color: '#DCEDC8',
+    desc: 'أثر تغير عامل واحد على صافي الدخل/التعادل',
+    fields:[
+      {k:'base_val',  l:'القيمة الأساسية',    u:'ج.م'},
+      {k:'change_pct',l:'نسبة التغير',        u:'%'},
+      {k:'new_val',   l:'القيمة الجديدة',     u:'ج.م'},
+      {k:'abs_impact',l:'الأثر المطلق',       u:'ج.م'},
+      {k:'pct_impact',l:'نسبة التأثير على الربح',u:'%'},
+      {k:'base_profit',l:'الربح الأساسي',     u:'ج.م'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error; delete v._decision;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.base_val) && n(v.change_pct) && !n(v.new_val)) {
+          v.new_val = r(v.base_val! * (1 + v.change_pct!/100)); c=true;
+        }
+        if(n(v.new_val) && n(v.base_val) && !n(v.change_pct)) {
+          if(v.base_val! !== 0) { v.change_pct = r(((v.new_val! - v.base_val!)/v.base_val!)*100); c=true; }
+        }
+        if(n(v.new_val) && n(v.base_val) && !n(v.abs_impact)) {
+          v.abs_impact = r(v.new_val! - v.base_val!); c=true;
+        }
+        if(n(v.abs_impact) && n(v.base_profit) && v.base_profit!>0 && !n(v.pct_impact)) {
+          v.pct_impact = r((v.abs_impact!/v.base_profit!)*100); c=true;
+        }
+      }
+      if(n(v.pct_impact)) {
+        v._decision = 'تغير ' + (v.change_pct||0) + '% يؤثر على الربح بنسبة ' + v.pct_impact! + '%';
+      }
+      return v;
+    },
+    formula: 'القيمة الجديدة = الأساسية × (1 + نسبة التغير) | الأثر = الجديدة − الأساسية',
+    latex: '\\\\text{جديدة} = \\\\text{أساسية} \\\\times (1 + \\\\Delta\\\\%)'
+  },
+  {
+    id: 'capex_budget', title: 'موازنة المصاريف الرأسمالية', icon: '🏗️', color: '#F0F4C3',
+    desc: 'تخطيط الإنفاق على الأصول الثابتة والمشاريع',
+    fields:[
+      {k:'equip',    l:'شراء معدات وآلات',    u:'ج.م', helper: { type: 'dynamic_sum', title: 'تفصيل المعدات' }},
+      {k:'building', l:'شراء مباني',           u:'ج.م'},
+      {k:'vehicle',  l:'سيارات ومركبات',      u:'ج.م'},
+      {k:'tech',     l:'أنظمة وتكنولوجيا',    u:'ج.م'},
+      {k:'other',    l:'أصول أخرى',            u:'ج.م'},
+      {k:'total',    l:'إجمالي الإنفاق الرأسمالي',u:'ج.م'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error;
+      if(!n(v.building)) v.building = 0;
+      if(!n(v.vehicle)) v.vehicle = 0;
+      if(!n(v.tech)) v.tech = 0;
+      if(!n(v.other)) v.other = 0;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.equip) && !n(v.total)) {
+          v.total = r(v.equip! + (v.building||0) + (v.vehicle||0) + (v.tech||0) + (v.other||0)); c=true;
+        }
+        if(n(v.total) && n(v.building) && n(v.vehicle) && n(v.tech) && n(v.other) && !n(v.equip)) {
+          v.equip = r(v.total! - v.building! - v.vehicle! - v.tech! - v.other!); c=true;
+        }
+      }
+      return v;
+    },
+    formula: 'إجمالي CapEx = معدات + مباني + سيارات + تكنولوجيا + أخرى',
+    latex: '\\\\text{CapEx} = \\\\sum \\\\text{بنود الأصول}'
+  },
+  {
+    id: 'scenario', title: 'تحليل السيناريوهات', icon: '🎭', color: '#E1BEE7',
+    desc: 'مقارنة أفضل / أسوأ / متوسط حالة',
+    fields:[
+      {k:'best',   l:'السيناريو المتفائل',  u:'ج.م'},
+      {k:'worst',  l:'السيناريو المتشائم',   u:'ج.م'},
+      {k:'likely', l:'السيناريو الأرجح',     u:'ج.م'},
+      {k:'expected',l:'القيمة المتوقعة (PERT)',u:'ج.م'},
+      {k:'range',  l:'مدى التباين',          u:'ج.م'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error; delete v._decision;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        // PERT Expected = (Best + 4×Likely + Worst) / 6
+        if(n(v.best) && n(v.worst) && n(v.likely) && !n(v.expected)) {
+          v.expected = r((v.best! + 4*v.likely! + v.worst!) / 6); c=true;
+        }
+        if(n(v.best) && n(v.worst) && !n(v.range)) {
+          v.range = r(v.best! - v.worst!); c=true;
+        }
+      }
+      if(n(v.range)) {
+        v._decision = '📊 مدى التباين = ' + v.range! + ' ج.م | المتوقع = ' + (v.expected||'—') + ' ج.م';
+      }
+      return v;
+    },
+    formula: 'PERT = (متفائل + 4×أرجح + متشائم) ÷ 6 | المدى = متفائل − متشائم',
+    latex: '\\\\text{PERT} = \\\\frac{O + 4M + P}{6}'
+  },
+  // ══════════════════════════════════════════════════════
+  //  المرحلة 8 — التكاليف المتقدمة
+  // ══════════════════════════════════════════════════════
+  {
+    id: 'abc_costing', title: 'التكلفة على أساس النشاط', icon: '🔬', color: '#F8BBD0',
+    desc: 'ABC — تخصيص التكاليف حسب مُسبب التكلفة الفعلي',
+    fields:[
+      {k:'oh_total',  l:'إجمالي التكاليف غير المباشرة', u:'ج.م'},
+      {k:'driver_qty',l:'إجمالي وحدات مُسبب التكلفة',  u:'وحدة'},
+      {k:'act_rate',  l:'معدل النشاط',                   u:'ج.م/وحدة'},
+      {k:'prod_qty',  l:'وحدات مُسبب للمنتج',           u:'وحدة'},
+      {k:'alloc',     l:'التكلفة المخصصة للمنتج',       u:'ج.م'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.driver_qty) && v.driver_qty! <= 0) { v._error = 'وحدات المُسبب يجب أن تكون أكبر من صفر'; break; }
+        if(n(v.oh_total) && n(v.driver_qty) && v.driver_qty!>0 && !n(v.act_rate)) {
+          v.act_rate = r(v.oh_total! / v.driver_qty!); c=true;
+        }
+        if(n(v.act_rate) && n(v.driver_qty) && !n(v.oh_total)) { v.oh_total = r(v.act_rate! * v.driver_qty!); c=true; }
+        if(n(v.act_rate) && n(v.prod_qty) && !n(v.alloc)) { v.alloc = r(v.act_rate! * v.prod_qty!); c=true; }
+        if(n(v.alloc) && n(v.act_rate) && v.act_rate!>0 && !n(v.prod_qty)) { v.prod_qty = r(v.alloc! / v.act_rate!); c=true; }
+        if(n(v.alloc) && n(v.prod_qty) && v.prod_qty!>0 && !n(v.act_rate)) { v.act_rate = r(v.alloc! / v.prod_qty!); c=true; }
+      }
+      return v;
+    },
+    formula: 'معدل النشاط = إجمالي التكلفة ÷ إجمالي المُسبب | المخصص = المعدل × وحدات المنتج',
+    latex: '\\\\text{Rate} = \\\\frac{\\\\text{OH}}{\\\\text{Driver}} \\\\quad \\\\text{Alloc} = \\\\text{Rate} \\\\times \\\\text{وحدات}'
+  },
+  {
+    id: 'job_order', title: 'تسعير أوامر الإنتاج', icon: '📋', color: '#F48FB1',
+    desc: 'Job-Order Costing — تجميع تكاليف الأمر الإنتاجي',
+    fields:[
+      {k:'dm',    l:'مواد مباشرة',              u:'ج.م'},
+      {k:'dl',    l:'أجور مباشرة',              u:'ج.م'},
+      {k:'oh',    l:'تكاليف صناعية غير مباشرة', u:'ج.م'},
+      {k:'total', l:'إجمالي تكلفة الأمر',       u:'ج.م'},
+      {k:'qty',   l:'وحدات الأمر',              u:'وحدة'},
+      {k:'cost_pu',l:'تكلفة الوحدة',            u:'ج.م'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.dm) && n(v.dl) && n(v.oh) && !n(v.total)) { v.total = r(v.dm! + v.dl! + v.oh!); c=true; }
+        if(n(v.total) && n(v.dl) && n(v.oh) && !n(v.dm)) { v.dm = r(v.total! - v.dl! - v.oh!); c=true; }
+        if(n(v.total) && n(v.dm) && n(v.oh) && !n(v.dl)) { v.dl = r(v.total! - v.dm! - v.oh!); c=true; }
+        if(n(v.total) && n(v.dm) && n(v.dl) && !n(v.oh)) { v.oh = r(v.total! - v.dm! - v.dl!); c=true; }
+        if(n(v.total) && n(v.qty) && v.qty!>0 && !n(v.cost_pu)) { v.cost_pu = r(v.total! / v.qty!); c=true; }
+        if(n(v.cost_pu) && n(v.qty) && !n(v.total)) { v.total = r(v.cost_pu! * v.qty!); c=true; }
+        if(n(v.total) && n(v.cost_pu) && v.cost_pu!>0 && !n(v.qty)) { v.qty = r(v.total! / v.cost_pu!); c=true; }
+      }
+      return v;
+    },
+    formula: 'تكلفة الأمر = مواد + أجور + ت. صناعية | تكلفة الوحدة = الإجمالي ÷ الكمية',
+    latex: '\\\\text{Job Cost} = \\\\text{DM} + \\\\text{DL} + \\\\text{MOH}'
+  },
+  {
+    id: 'process_costing', title: 'تسعير المراحل', icon: '🏭', color: '#CE93D8',
+    desc: 'Process Costing — تكلفة الوحدة المكافئة',
+    fields:[
+      {k:'completed',  l:'وحدات تامة',             u:'وحدة'},
+      {k:'wip',        l:'وحدات تحت التشغيل',     u:'وحدة'},
+      {k:'wip_pct',    l:'نسبة الإتمام',           u:'%'},
+      {k:'equiv_units',l:'الوحدات المكافئة',       u:'وحدة'},
+      {k:'total_cost', l:'إجمالي تكاليف الفترة',  u:'ج.م'},
+      {k:'cost_pu',    l:'تكلفة الوحدة المكافئة', u:'ج.م'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.wip_pct) && (v.wip_pct! < 0 || v.wip_pct! > 100)) { v._error = 'نسبة الإتمام يجب أن تكون بين 0 و 100%'; break; }
+        if(n(v.completed) && n(v.wip) && n(v.wip_pct) && !n(v.equiv_units)) {
+          v.equiv_units = r(v.completed! + v.wip! * (v.wip_pct!/100)); c=true;
+        }
+        if(n(v.total_cost) && n(v.equiv_units) && v.equiv_units!>0 && !n(v.cost_pu)) {
+          v.cost_pu = r(v.total_cost! / v.equiv_units!); c=true;
+        }
+        if(n(v.cost_pu) && n(v.equiv_units) && !n(v.total_cost)) {
+          v.total_cost = r(v.cost_pu! * v.equiv_units!); c=true;
+        }
+      }
+      return v;
+    },
+    formula: 'وحدات مكافئة = تامة + (WIP × نسبة إتمام) | تكلفة الوحدة = الإجمالي ÷ المكافئة',
+    latex: '\\\\text{EU} = \\\\text{تامة} + (\\\\text{WIP} \\\\times \\\\text{\\\\% إتمام})'
+  },
+  {
+    id: 'equivalent_units', title: 'الوحدات المكافئة', icon: '🔢', color: '#B39DDB',
+    desc: 'حساب الوحدات المكافئة بطريقة المتوسط المرجح أو FIFO',
+    fields:[
+      {k:'beg_wip',    l:'WIP أول المدة',         u:'وحدة'},
+      {k:'beg_pct',    l:'نسبة إتمام أول المدة',  u:'%'},
+      {k:'started',    l:'وحدات بدأت وتمت',       u:'وحدة'},
+      {k:'end_wip',    l:'WIP آخر المدة',          u:'وحدة'},
+      {k:'end_pct',    l:'نسبة إتمام آخر المدة',  u:'%'},
+      {k:'eu_wavg',    l:'مكافئة (متوسط مرجح)',    u:'وحدة'},
+      {k:'eu_fifo',    l:'مكافئة (FIFO)',           u:'وحدة'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        const completed = (n(v.beg_wip) && n(v.started)) ? v.beg_wip! + v.started! : null;
+        // Weighted Average
+        if(completed !== null && n(v.end_wip) && n(v.end_pct) && !n(v.eu_wavg)) {
+          v.eu_wavg = r(completed - v.end_wip! + v.end_wip! * (v.end_pct!/100)); c=true;
+        }
+        // FIFO
+        if(n(v.beg_wip) && n(v.beg_pct) && n(v.started) && n(v.end_wip) && n(v.end_pct) && !n(v.eu_fifo)) {
+          const completeBeg = v.beg_wip! * (1 - v.beg_pct!/100);
+          const endEU = v.end_wip! * (v.end_pct!/100);
+          const startedAndDone = (v.beg_wip! + v.started!) - v.beg_wip! - v.end_wip!;
+          v.eu_fifo = r(completeBeg + (startedAndDone > 0 ? startedAndDone : 0) + endEU); c=true;
+        }
+      }
+      return v;
+    },
+    formula: 'متوسط مرجح = تامة + (WIP آخر × %) | FIFO = إكمال أول + بدأت وتمت + (WIP آخر × %)',
+    latex: '\\\\text{EU}_{WA} = \\\\text{Completed} + (\\\\text{EWIP} \\\\times \\\\%)'
+  },
+  {
+    id: 'pdoh_rate', title: 'معدل التحميل المحدد', icon: '⚙️', color: '#9FA8DA',
+    desc: 'معدل تحميل التكاليف الإضافية المحدد مقدماً (PDOH)',
+    fields:[
+      {k:'est_oh',    l:'التكاليف المقدرة',     u:'ج.م'},
+      {k:'est_base',  l:'أساس التحميل المقدر', u:'ساعة/وحدة'},
+      {k:'pdoh',      l:'معدل التحميل المحدد',  u:'ج.م/وحدة'},
+      {k:'act_base',  l:'الأساس الفعلي',        u:'ساعة/وحدة'},
+      {k:'applied_oh',l:'التكاليف المحملة',     u:'ج.م'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.est_base) && v.est_base! <= 0) { v._error = 'أساس التحميل يجب أن يكون أكبر من صفر'; break; }
+        if(n(v.est_oh) && n(v.est_base) && v.est_base!>0 && !n(v.pdoh)) { v.pdoh = r(v.est_oh! / v.est_base!); c=true; }
+        if(n(v.pdoh) && n(v.est_base) && !n(v.est_oh)) { v.est_oh = r(v.pdoh! * v.est_base!); c=true; }
+        if(n(v.pdoh) && n(v.act_base) && !n(v.applied_oh)) { v.applied_oh = r(v.pdoh! * v.act_base!); c=true; }
+        if(n(v.applied_oh) && n(v.pdoh) && v.pdoh!>0 && !n(v.act_base)) { v.act_base = r(v.applied_oh! / v.pdoh!); c=true; }
+      }
+      return v;
+    },
+    formula: 'PDOH = التكاليف المقدرة ÷ الأساس المقدر | المحملة = PDOH × الأساس الفعلي',
+    latex: '\\\\text{PDOH} = \\\\frac{\\\\text{Est. OH}}{\\\\text{Est. Base}}'
+  },
+  {
+    id: 'target_costing', title: 'التكلفة المستهدفة', icon: '🎯', color: '#80DEEA',
+    desc: 'تحديد التكلفة المسموحة من سعر السوق والهامش المطلوب',
+    fields:[
+      {k:'market_price', l:'سعر البيع السوقي',      u:'ج.م'},
+      {k:'target_margin',l:'هامش الربح المستهدف',   u:'%'},
+      {k:'target_profit',l:'الربح المستهدف',         u:'ج.م'},
+      {k:'target_cost',  l:'التكلفة المستهدفة',     u:'ج.م'},
+      {k:'actual_cost',  l:'التكلفة الحالية',        u:'ج.م'},
+      {k:'gap',          l:'فجوة التكلفة',           u:'ج.م'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error; delete v._decision;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.market_price) && v.market_price! <= 0) { v._error = 'سعر السوق يجب أن يكون أكبر من صفر'; break; }
+        if(n(v.market_price) && n(v.target_margin) && !n(v.target_profit)) {
+          v.target_profit = r(v.market_price! * (v.target_margin!/100)); c=true;
+        }
+        if(n(v.target_profit) && n(v.market_price) && v.market_price!>0 && !n(v.target_margin)) {
+          v.target_margin = r((v.target_profit!/v.market_price!)*100); c=true;
+        }
+        if(n(v.market_price) && n(v.target_profit) && !n(v.target_cost)) {
+          v.target_cost = r(v.market_price! - v.target_profit!); c=true;
+        }
+        if(n(v.target_cost) && n(v.target_profit) && !n(v.market_price)) {
+          v.market_price = r(v.target_cost! + v.target_profit!); c=true;
+        }
+        if(n(v.target_cost) && n(v.actual_cost) && !n(v.gap)) {
+          v.gap = r(v.actual_cost! - v.target_cost!); c=true;
+        }
+      }
+      if(n(v.gap)) {
+        if(v.gap! <= 0) v._decision = '🟢 التكلفة الحالية ≤ المستهدفة — ممتاز';
+        else v._decision = '🔴 فجوة ' + v.gap! + ' ج.م — يجب خفض التكلفة';
+      }
+      return v;
+    },
+    formula: 'التكلفة المستهدفة = سعر السوق − الربح المستهدف | الفجوة = الفعلية − المستهدفة',
+    latex: '\\\\text{Target Cost} = \\\\text{Price} - \\\\text{Target Profit}'
+  },
+  {
+    id: 'value_chain', title: 'تحليل سلسلة القيمة', icon: '🔗', color: '#B2EBF2',
+    desc: 'تفكيك تكاليف الأنشطة لتحديد القيمة المضافة',
+    fields:[
+      {k:'activity',  l:'تكلفة النشاط',         u:'ج.م'},
+      {k:'total_cost',l:'إجمالي تكاليف الشركة', u:'ج.م'},
+      {k:'pct',       l:'نسبة النشاط من الإجمالي',u:'%'},
+      {k:'revenue',   l:'إيراد النشاط',           u:'ج.م'},
+      {k:'va',        l:'القيمة المضافة',         u:'ج.م'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error; delete v._decision;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.activity) && n(v.total_cost) && v.total_cost!>0 && !n(v.pct)) {
+          v.pct = r((v.activity!/v.total_cost!)*100); c=true;
+        }
+        if(n(v.pct) && n(v.total_cost) && !n(v.activity)) { v.activity = r((v.pct!/100)*v.total_cost!); c=true; }
+        if(n(v.revenue) && n(v.activity) && !n(v.va)) { v.va = r(v.revenue! - v.activity!); c=true; }
+        if(n(v.va) && n(v.activity) && !n(v.revenue)) { v.revenue = r(v.va! + v.activity!); c=true; }
+      }
+      if(n(v.va)) {
+        if(v.va! > 0) v._decision = '🟢 نشاط يضيف قيمة بـ ' + v.va! + ' ج.م';
+        else v._decision = '🔴 نشاط يدمر قيمة بـ ' + Math.abs(v.va!) + ' ج.م — راجع الاستبعاد';
+      }
+      return v;
+    },
+    formula: 'القيمة المضافة = إيراد النشاط − تكلفته | النسبة = تكلفة النشاط ÷ الإجمالي',
+    latex: '\\\\text{VA} = \\\\text{Revenue} - \\\\text{Activity Cost}'
+  },
+  // ══════════════════════════════════════════════════════
+  //  المرحلة 9 — المراجعة والحوكمة
+  // ══════════════════════════════════════════════════════
+  {
+    id: 'zscore', title: 'نموذج Altman Z-Score', icon: '🔮', color: '#EF9A9A',
+    desc: 'التنبؤ بالإفلاس باستخدام 5 نسب مالية مرجحة',
+    fields:[
+      {k:'wc_ta',    l:'رأس المال العامل / الأصول (X1)', u:''},
+      {k:'re_ta',    l:'أرباح محتجزة / الأصول (X2)',      u:''},
+      {k:'ebit_ta',  l:'EBIT / الأصول (X3)',               u:''},
+      {k:'mv_td',    l:'القيمة السوقية / الديون (X4)',     u:''},
+      {k:'sales_ta', l:'المبيعات / الأصول (X5)',           u:''},
+      {k:'zscore',   l:'Z-Score',                           u:''},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error; delete v._decision;
+      if(n(v.wc_ta) && n(v.re_ta) && n(v.ebit_ta) && n(v.mv_td) && n(v.sales_ta) && !n(v.zscore)) {
+        v.zscore = r(1.2*v.wc_ta! + 1.4*v.re_ta! + 3.3*v.ebit_ta! + 0.6*v.mv_td! + 1.0*v.sales_ta!);
+      }
+      if(n(v.zscore)) {
+        if(v.zscore! > 2.99) v._decision = '🟢 منطقة آمنة (Z > 2.99) — احتمال إفلاس منخفض جداً';
+        else if(v.zscore! >= 1.81) v._decision = '🟡 منطقة رمادية (1.81-2.99) — يحتاج مراقبة';
+        else v._decision = '🔴 منطقة خطر (Z < 1.81) — احتمال إفلاس مرتفع!';
+      }
+      return v;
+    },
+    formula: 'Z = 1.2×X1 + 1.4×X2 + 3.3×X3 + 0.6×X4 + 1.0×X5',
+    latex: 'Z = 1.2X_1 + 1.4X_2 + 3.3X_3 + 0.6X_4 + 1.0X_5'
+  },
+  {
+    id: 'journal_entries', title: 'قيود اليومية', icon: '📝', color: '#FFCC80',
+    desc: 'تسجيل القيود المحاسبية والتحقق من توازن مدين/دائن',
+    fields:[
+      {k:'debit1',  l:'مدين ①',   u:'ج.م'},
+      {k:'debit2',  l:'مدين ②',   u:'ج.م'},
+      {k:'debit3',  l:'مدين ③',   u:'ج.م'},
+      {k:'credit1', l:'دائن ①',   u:'ج.م'},
+      {k:'credit2', l:'دائن ②',   u:'ج.م'},
+      {k:'credit3', l:'دائن ③',   u:'ج.م'},
+      {k:'total_d', l:'إجمالي المدين', u:'ج.م'},
+      {k:'total_c', l:'إجمالي الدائن', u:'ج.م'},
+      {k:'diff',    l:'الفرق',          u:'ج.م'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error; delete v._decision;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        const td = (v.debit1||0) + (v.debit2||0) + (v.debit3||0);
+        const tc = (v.credit1||0) + (v.credit2||0) + (v.credit3||0);
+        if(!n(v.total_d) && (n(v.debit1) || n(v.debit2) || n(v.debit3))) { v.total_d = r(td); c=true; }
+        if(!n(v.total_c) && (n(v.credit1) || n(v.credit2) || n(v.credit3))) { v.total_c = r(tc); c=true; }
+        if(n(v.total_d) && n(v.total_c) && !n(v.diff)) { v.diff = r(v.total_d! - v.total_c!); c=true; }
+      }
+      if(n(v.diff)) {
+        if(v.diff! === 0) v._decision = '✅ القيد متوازن — مدين = دائن';
+        else v._decision = '🔴 القيد غير متوازن — فرق = ' + v.diff! + ' ج.م';
+      }
+      return v;
+    },
+    formula: 'إجمالي المدين يجب أن يساوي إجمالي الدائن',
+    latex: '\\\\sum \\\\text{مدين} = \\\\sum \\\\text{دائن}'
+  },
+  {
+    id: 'trial_balance', title: 'ميزان المراجعة', icon: '⚖️', color: '#FFE0B2',
+    desc: 'تجميع أرصدة الحسابات والتحقق من التوازن',
+    fields:[
+      {k:'dr1', l:'رصيد مدين ①', u:'ج.م'},
+      {k:'dr2', l:'رصيد مدين ②', u:'ج.م'},
+      {k:'dr3', l:'رصيد مدين ③', u:'ج.م'},
+      {k:'dr4', l:'رصيد مدين ④', u:'ج.م'},
+      {k:'cr1', l:'رصيد دائن ①', u:'ج.م'},
+      {k:'cr2', l:'رصيد دائن ②', u:'ج.م'},
+      {k:'cr3', l:'رصيد دائن ③', u:'ج.م'},
+      {k:'cr4', l:'رصيد دائن ④', u:'ج.م'},
+      {k:'total_dr', l:'إجمالي مدين', u:'ج.م'},
+      {k:'total_cr', l:'إجمالي دائن', u:'ج.م'},
+      {k:'diff',     l:'الفرق',        u:'ج.م'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error; delete v._decision;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        const td = (v.dr1||0)+(v.dr2||0)+(v.dr3||0)+(v.dr4||0);
+        const tc = (v.cr1||0)+(v.cr2||0)+(v.cr3||0)+(v.cr4||0);
+        if(!n(v.total_dr) && (n(v.dr1)||n(v.dr2)||n(v.dr3)||n(v.dr4))) { v.total_dr = r(td); c=true; }
+        if(!n(v.total_cr) && (n(v.cr1)||n(v.cr2)||n(v.cr3)||n(v.cr4))) { v.total_cr = r(tc); c=true; }
+        if(n(v.total_dr) && n(v.total_cr) && !n(v.diff)) { v.diff = r(v.total_dr! - v.total_cr!); c=true; }
+      }
+      if(n(v.diff)) {
+        if(v.diff! === 0) v._decision = '✅ ميزان المراجعة متوازن';
+        else v._decision = '🔴 ميزان غير متوازن — فرق = ' + v.diff! + ' ج.م — ابحث عن الخطأ';
+      }
+      return v;
+    },
+    formula: 'إجمالي الأرصدة المدينة = إجمالي الأرصدة الدائنة',
+    latex: '\\\\sum \\\\text{Dr} = \\\\sum \\\\text{Cr}'
+  },
+  {
+    id: 'benford', title: 'قانون Benford', icon: '🔍', color: '#FFCDD2',
+    desc: 'كشف التلاعب بالبيانات المالية عبر توزيع الأرقام الأولى',
+    fields:[
+      {k:'digit',     l:'الرقم الأول (1-9)',              u:''},
+      {k:'expected',  l:'النسبة المتوقعة (Benford)',     u:'%'},
+      {k:'actual_pct',l:'النسبة الفعلية',                u:'%'},
+      {k:'deviation', l:'الانحراف',                       u:'%'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error; delete v._decision;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.digit) && (v.digit! < 1 || v.digit! > 9 || v.digit! !== Math.floor(v.digit!))) {
+          v._error = 'الرقم يجب أن يكون عدد صحيح من 1 إلى 9'; break;
+        }
+        if(n(v.digit) && !n(v.expected)) {
+          v.expected = r(Math.log10(1 + 1/v.digit!) * 100); c=true;
+        }
+        if(n(v.actual_pct) && n(v.expected) && !n(v.deviation)) {
+          v.deviation = r(v.actual_pct! - v.expected!); c=true;
+        }
+      }
+      if(n(v.deviation)) {
+        if(Math.abs(v.deviation!) <= 2) v._decision = '🟢 انحراف طبيعي (≤ 2%) — لا يوجد شبهة';
+        else if(Math.abs(v.deviation!) <= 5) v._decision = '🟡 انحراف ملحوظ (2-5%) — يستحق المراجعة';
+        else v._decision = '🔴 انحراف كبير (> 5%) — شبهة تلاعب!';
+      }
+      return v;
+    },
+    formula: 'النسبة المتوقعة = log₁₀(1 + 1/d) × 100',
+    latex: 'P(d) = \\\\log_{10}\\\\left(1 + \\\\frac{1}{d}\\\\right)'
+  },
+  {
+    id: 'trend_analysis', title: 'تحليل الاتجاه', icon: '📈', color: '#C5CAE9',
+    desc: 'تتبع بند مالي عبر عدة سنوات (سنة الأساس = 100)',
+    fields:[
+      {k:'base',  l:'قيمة سنة الأساس',  u:'ج.م'},
+      {k:'yr1',   l:'قيمة السنة 1',      u:'ج.م'},
+      {k:'yr2',   l:'قيمة السنة 2',      u:'ج.م'},
+      {k:'yr3',   l:'قيمة السنة 3',      u:'ج.م'},
+      {k:'idx1',  l:'مؤشر السنة 1',      u:'%'},
+      {k:'idx2',  l:'مؤشر السنة 2',      u:'%'},
+      {k:'idx3',  l:'مؤشر السنة 3',      u:'%'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error; delete v._decision;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.base) && v.base! === 0) { v._error = 'سنة الأساس لا يمكن أن تكون صفراً'; break; }
+        if(n(v.base) && v.base!>0) {
+          if(n(v.yr1) && !n(v.idx1)) { v.idx1 = r((v.yr1!/v.base!)*100); c=true; }
+          if(n(v.yr2) && !n(v.idx2)) { v.idx2 = r((v.yr2!/v.base!)*100); c=true; }
+          if(n(v.yr3) && !n(v.idx3)) { v.idx3 = r((v.yr3!/v.base!)*100); c=true; }
+          if(n(v.idx1) && !n(v.yr1)) { v.yr1 = r((v.idx1!/100)*v.base!); c=true; }
+          if(n(v.idx2) && !n(v.yr2)) { v.yr2 = r((v.idx2!/100)*v.base!); c=true; }
+          if(n(v.idx3) && !n(v.yr3)) { v.yr3 = r((v.idx3!/100)*v.base!); c=true; }
+        }
+      }
+      if(n(v.idx3)) {
+        if(v.idx3! > 100) v._decision = '📈 اتجاه صاعد — السنة 3 = ' + v.idx3! + '% من الأساس';
+        else if(v.idx3! < 100) v._decision = '📉 اتجاه هابط — السنة 3 = ' + v.idx3! + '% من الأساس';
+        else v._decision = '➡️ ثبات — لا تغيير عن الأساس';
+      }
+      return v;
+    },
+    formula: 'المؤشر = (قيمة السنة ÷ سنة الأساس) × 100',
+    latex: '\\\\text{Index} = \\\\frac{\\\\text{قيمة السنة}}{\\\\text{سنة الأساس}} \\\\times 100'
+  },
+  {
+    id: 'mscore', title: 'نموذج Beneish M-Score', icon: '🕵️', color: '#FFAB91',
+    desc: 'كشف التلاعب بالأرباح (Earnings Manipulation)',
+    fields:[
+      {k:'dsri', l:'مؤشر المدينين/المبيعات (DSRI)',   u:''},
+      {k:'gmi',  l:'مؤشر هامش الربح (GMI)',            u:''},
+      {k:'aqi',  l:'مؤشر جودة الأصول (AQI)',           u:''},
+      {k:'sgi',  l:'مؤشر نمو المبيعات (SGI)',          u:''},
+      {k:'depi', l:'مؤشر الإهلاك (DEPI)',              u:''},
+      {k:'sgai', l:'مؤشر م.بيع وإدارة (SGAI)',         u:''},
+      {k:'lvgi', l:'مؤشر الرافعة (LVGI)',              u:''},
+      {k:'tata', l:'إجمالي الاستحقاق (TATA)',          u:''},
+      {k:'mscore',l:'M-Score',                          u:''},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error; delete v._decision;
+      if(n(v.dsri) && n(v.gmi) && n(v.aqi) && n(v.sgi) && n(v.depi) && n(v.sgai) && n(v.lvgi) && n(v.tata) && !n(v.mscore)) {
+        v.mscore = r(-4.84 + 0.920*v.dsri! + 0.528*v.gmi! + 0.404*v.aqi! + 0.892*v.sgi! + 0.115*v.depi! - 0.172*v.sgai! + 4.679*v.tata! - 0.327*v.lvgi!);
+      }
+      if(n(v.mscore)) {
+        if(v.mscore! < -2.22) v._decision = '🟢 لا شبهة تلاعب (M < -2.22)';
+        else v._decision = '🔴 شبهة تلاعب بالأرباح (M ≥ -2.22) — تحتاج تحقيق!';
+      }
+      return v;
+    },
+    formula: 'M = -4.84 + 0.92×DSRI + 0.53×GMI + 0.40×AQI + 0.89×SGI + 0.12×DEPI − 0.17×SGAI + 4.68×TATA − 0.33×LVGI',
+    latex: 'M = -4.84 + \\\\sum w_i \\\\times X_i'
+  },
+  {
+    id: 'bank_reconciliation', title: 'التسويات البنكية', icon: '🏦', color: '#B0BEC5',
+    desc: 'مطابقة رصيد البنك مع رصيد الدفاتر',
+    fields:[
+      {k:'bank_bal',   l:'رصيد كشف البنك',        u:'ج.م'},
+      {k:'dep_transit',l:'إيداعات في الطريق (+)',  u:'ج.م'},
+      {k:'os_checks',  l:'شيكات لم تُصرف (−)',    u:'ج.م'},
+      {k:'adj_bank',   l:'الرصيد المعدل (بنك)',   u:'ج.م'},
+      {k:'book_bal',   l:'رصيد الدفاتر',          u:'ج.م'},
+      {k:'int_earned', l:'فوائد مكتسبة (+)',       u:'ج.م'},
+      {k:'nsf',        l:'شيكات مرتجعة (−)',       u:'ج.م'},
+      {k:'fees',       l:'عمولات بنكية (−)',        u:'ج.م'},
+      {k:'adj_book',   l:'الرصيد المعدل (دفاتر)',  u:'ج.م'},
+      {k:'diff',       l:'الفرق',                   u:'ج.م'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error; delete v._decision;
+      if(!n(v.dep_transit)) v.dep_transit = 0;
+      if(!n(v.os_checks)) v.os_checks = 0;
+      if(!n(v.int_earned)) v.int_earned = 0;
+      if(!n(v.nsf)) v.nsf = 0;
+      if(!n(v.fees)) v.fees = 0;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.bank_bal) && !n(v.adj_bank)) {
+          v.adj_bank = r(v.bank_bal! + (v.dep_transit||0) - (v.os_checks||0)); c=true;
+        }
+        if(n(v.book_bal) && !n(v.adj_book)) {
+          v.adj_book = r(v.book_bal! + (v.int_earned||0) - (v.nsf||0) - (v.fees||0)); c=true;
+        }
+        if(n(v.adj_bank) && n(v.adj_book) && !n(v.diff)) {
+          v.diff = r(v.adj_bank! - v.adj_book!); c=true;
+        }
+      }
+      if(n(v.diff)) {
+        if(v.diff! === 0) v._decision = '✅ التسوية صحيحة — الرصيدان متطابقان';
+        else v._decision = '🔴 فرق = ' + v.diff! + ' ج.م — يجب البحث عن السبب';
+      }
+      return v;
+    },
+    formula: 'بنك معدل = الرصيد + إيداعات − شيكات | دفاتر معدلة = الرصيد + فوائد − مرتجعات − عمولات',
+    latex: '\\\\text{Adj Bank} = \\\\text{Bank} + \\\\text{DIT} - \\\\text{OS Checks}'
+  },
+  // ══════════════════════════════════════════════════════
+  //  المرحلة 10 — أدوات متقدمة للتميز
+  // ══════════════════════════════════════════════════════
+  {
+    id: 'fin_leverage', title: 'الرافعة المالية المركبة', icon: '⚡', color: '#FFE082',
+    desc: 'DOL + DFL + DCL — التأثير المضاعف على الأرباح',
+    fields:[
+      {k:'cm',   l:'إجمالي هامش المساهمة', u:'ج.م'},
+      {k:'ebit', l:'الربح التشغيلي (EBIT)', u:'ج.م'},
+      {k:'ebt',  l:'الربح قبل الضريبة (EBT)',u:'ج.م'},
+      {k:'dol',  l:'درجة الرافعة التشغيلية (DOL)',u:'مرة'},
+      {k:'dfl',  l:'درجة الرافعة المالية (DFL)', u:'مرة'},
+      {k:'dcl',  l:'درجة الرافعة المركبة (DCL)', u:'مرة'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error; delete v._decision;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.ebit) && v.ebit! === 0) { v._error = 'EBIT لا يمكن أن يكون صفراً (قسمة)'; break; }
+        if(n(v.ebt) && v.ebt! === 0) { v._error = 'EBT لا يمكن أن يكون صفراً (قسمة)'; break; }
+        if(n(v.cm) && n(v.ebit) && v.ebit!!==0 && !n(v.dol)) { v.dol = r(v.cm!/v.ebit!); c=true; }
+        if(n(v.dol) && n(v.ebit) && !n(v.cm)) { v.cm = r(v.dol!*v.ebit!); c=true; }
+        if(n(v.ebit) && n(v.ebt) && v.ebt!!==0 && !n(v.dfl)) { v.dfl = r(v.ebit!/v.ebt!); c=true; }
+        if(n(v.dfl) && n(v.ebt) && !n(v.ebit)) { v.ebit = r(v.dfl!*v.ebt!); c=true; }
+        if(n(v.dol) && n(v.dfl) && !n(v.dcl)) { v.dcl = r(v.dol!*v.dfl!); c=true; }
+        if(n(v.dcl) && n(v.dol) && v.dol!>0 && !n(v.dfl)) { v.dfl = r(v.dcl!/v.dol!); c=true; }
+        if(n(v.dcl) && n(v.dfl) && v.dfl!>0 && !n(v.dol)) { v.dol = r(v.dcl!/v.dfl!); c=true; }
+        // Direct: DCL = CM / EBT
+        if(n(v.cm) && n(v.ebt) && v.ebt!!==0 && !n(v.dcl)) { v.dcl = r(v.cm!/v.ebt!); c=true; }
+      }
+      if(n(v.dcl)) {
+        if(v.dcl! <= 2) v._decision = '🟢 رافعة محافظة (DCL ≤ 2)';
+        else if(v.dcl! <= 5) v._decision = '🟡 رافعة متوسطة (2-5)';
+        else v._decision = '🔴 رافعة عالية جداً (> 5) — مخاطر مرتفعة';
+      }
+      return v;
+    },
+    formula: 'DOL = CM/EBIT | DFL = EBIT/EBT | DCL = DOL × DFL',
+    latex: '\\\\text{DCL} = \\\\text{DOL} \\\\times \\\\text{DFL} = \\\\frac{CM}{EBT}'
+  },
+  {
+    id: 'lease_vs_buy', title: 'التأجير مقابل الشراء', icon: '🔄', color: '#C5E1A5',
+    desc: 'مقارنة القيمة الحالية لتكلفة التأجير مع الشراء',
+    fields:[
+      {k:'buy_cost',  l:'تكلفة الشراء',            u:'ج.م'},
+      {k:'lease_pmt', l:'القسط السنوي للتأجير',    u:'ج.م'},
+      {k:'n',         l:'عدد سنوات التأجير',        u:'سنة'},
+      {k:'rate',      l:'معدل الخصم',               u:'%'},
+      {k:'salvage',   l:'القيمة المتبقية عند الشراء',u:'ج.م'},
+      {k:'pv_lease',  l:'PV تكلفة التأجير',         u:'ج.م'},
+      {k:'net_buy',   l:'صافي تكلفة الشراء',       u:'ج.م'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error; delete v._decision;
+      if(!n(v.salvage)) v.salvage = 0;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.rate) && v.rate! < 0) { v._error = 'معدل الخصم لا يمكن أن يكون سالباً'; break; }
+        if(n(v.n) && v.n! <= 0) { v._error = 'عدد السنوات يجب أن يكون أكبر من صفر'; break; }
+        const rr = n(v.rate) ? v.rate!/100 : null;
+        // PV of Lease
+        if(n(v.lease_pmt) && rr !== null && rr>0 && n(v.n) && !n(v.pv_lease)) {
+          v.pv_lease = r(v.lease_pmt! * (1 - Math.pow(1+rr, -v.n!)) / rr); c=true;
+        }
+        // Net buy cost = Buy - PV(Salvage)
+        if(n(v.buy_cost) && rr !== null && n(v.n) && !n(v.net_buy)) {
+          const pvSalvage = (v.salvage||0) / Math.pow(1+rr, v.n!);
+          v.net_buy = r(v.buy_cost! - pvSalvage); c=true;
+        }
+      }
+      if(n(v.pv_lease) && n(v.net_buy)) {
+        if(v.pv_lease! < v.net_buy!) v._decision = '🏷️ التأجير أفضل — وفر ' + r(v.net_buy! - v.pv_lease!) + ' ج.م';
+        else if(v.net_buy! < v.pv_lease!) v._decision = '🛒 الشراء أفضل — وفر ' + r(v.pv_lease! - v.net_buy!) + ' ج.م';
+        else v._decision = '⚖️ التكلفتان متساويتان';
+      }
+      return v;
+    },
+    formula: 'PV التأجير = القسط × معامل القسط | صافي الشراء = التكلفة − PV(المتبقية)',
+    latex: '\\\\text{PV Lease} = PMT \\\\times \\\\frac{1-(1+r)^{-n}}{r}'
+  },
+  {
+    id: 'bond_pricing', title: 'تسعير السندات', icon: '📜', color: '#B0BEC5',
+    desc: 'القيمة الحالية لسند يدفع كوبونات دورية + القيمة الاسمية',
+    fields:[
+      {k:'face',     l:'القيمة الاسمية',    u:'ج.م'},
+      {k:'coupon_r', l:'معدل الكوبون',      u:'%'},
+      {k:'coupon',   l:'قيمة الكوبون',      u:'ج.م'},
+      {k:'ytm',      l:'العائد حتى الاستحقاق',u:'%'},
+      {k:'n',        l:'عدد الفترات',        u:'فترة'},
+      {k:'pv_coupon',l:'PV الكوبونات',       u:'ج.م'},
+      {k:'pv_face',  l:'PV القيمة الاسمية',  u:'ج.م'},
+      {k:'price',    l:'سعر السند',          u:'ج.م'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error; delete v._decision;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.n) && v.n! <= 0) { v._error = 'عدد الفترات يجب أن يكون أكبر من صفر'; break; }
+        if(n(v.face) && n(v.coupon_r) && !n(v.coupon)) { v.coupon = r(v.face! * (v.coupon_r!/100)); c=true; }
+        if(n(v.coupon) && n(v.face) && v.face!>0 && !n(v.coupon_r)) { v.coupon_r = r((v.coupon!/v.face!)*100); c=true; }
+        const rr = n(v.ytm) ? v.ytm!/100 : null;
+        if(n(v.coupon) && rr !== null && rr>0 && n(v.n) && !n(v.pv_coupon)) {
+          v.pv_coupon = r(v.coupon! * (1 - Math.pow(1+rr, -v.n!)) / rr); c=true;
+        }
+        if(n(v.face) && rr !== null && n(v.n) && !n(v.pv_face)) {
+          v.pv_face = r(v.face! / Math.pow(1+rr, v.n!)); c=true;
+        }
+        if(n(v.pv_coupon) && n(v.pv_face) && !n(v.price)) { v.price = r(v.pv_coupon! + v.pv_face!); c=true; }
+      }
+      if(n(v.price) && n(v.face)) {
+        if(v.price! > v.face!) v._decision = '📈 السند يُباع بعلاوة (Premium)';
+        else if(v.price! < v.face!) v._decision = '📉 السند يُباع بخصم (Discount)';
+        else v._decision = '➡️ السند بالقيمة الاسمية (Par)';
+      }
+      return v;
+    },
+    formula: 'السعر = PV(الكوبونات) + PV(القيمة الاسمية)',
+    latex: '\\\\text{Price} = C \\\\times \\\\frac{1-(1+r)^{-n}}{r} + \\\\frac{F}{(1+r)^n}'
+  },
+  {
+    id: 'cash_breakeven', title: 'التعادل النقدي', icon: '💵', color: '#E0F7FA',
+    desc: 'نقطة التعادل بعد استبعاد المصاريف غير النقدية (الإهلاك)',
+    fields:[
+      {k:'fc',   l:'التكاليف الثابتة',        u:'ج.م'},
+      {k:'dep',  l:'الإهلاك (غير نقدي)',      u:'ج.م'},
+      {k:'cash_fc',l:'الثابتة النقدية فقط',  u:'ج.م'},
+      {k:'cm',   l:'هامش مساهمة الوحدة',      u:'ج.م'},
+      {k:'cmr',  l:'نسبة هامش المساهمة',      u:'%'},
+      {k:'cash_beq',l:'التعادل النقدي (كمية)',u:'وحدة'},
+      {k:'cash_bes',l:'التعادل النقدي (قيمة)',u:'ج.م'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error;
+      if(!n(v.dep)) v.dep = 0;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.fc) && n(v.dep) && !n(v.cash_fc)) { v.cash_fc = r(v.fc! - v.dep!); c=true; }
+        if(n(v.cash_fc) && n(v.dep) && !n(v.fc)) { v.fc = r(v.cash_fc! + v.dep!); c=true; }
+        if(n(v.cash_fc) && n(v.cm) && v.cm!>0 && !n(v.cash_beq)) { v.cash_beq = Math.ceil(v.cash_fc! / v.cm!); c=true; }
+        if(n(v.cash_fc) && n(v.cmr) && v.cmr!>0 && !n(v.cash_bes)) { v.cash_bes = r(v.cash_fc! / (v.cmr!/100)); c=true; }
+      }
+      return v;
+    },
+    formula: 'التعادل النقدي = (ثابتة − إهلاك) ÷ هامش الوحدة',
+    latex: '\\\\text{Cash BEQ} = \\\\frac{\\\\text{FC} - \\\\text{Dep}}{\\\\text{CM/u}}'
+  },
+  {
+    id: 'master_budget', title: 'ملخص الموازنة الرئيسية', icon: '📋', color: '#BBDEFB',
+    desc: 'ربط نتائج كل الموازنات الفرعية في ملخص واحد',
+    fields:[
+      {k:'sales_rev', l:'إيرادات المبيعات',     u:'ج.م'},
+      {k:'cogs',      l:'تكلفة البضاعة المباعة',u:'ج.م'},
+      {k:'gross',     l:'مجمل الربح',           u:'ج.م'},
+      {k:'opex',      l:'مصاريف التشغيل',       u:'ج.م'},
+      {k:'ebit',      l:'الربح التشغيلي',       u:'ج.م'},
+      {k:'capex',     l:'الإنفاق الرأسمالي',    u:'ج.م'},
+      {k:'net_cf',    l:'صافي التدفق النقدي',   u:'ج.م'},
+    ],
+    solver: (v: Record<string, number | null> & { _error?: string, _decision?: string }) => {
+      delete v._error;
+      let c=true, i=0;
+      while(c && i<10){
+        c=false; i++;
+        if(n(v.sales_rev) && n(v.cogs) && !n(v.gross)) { v.gross = r(v.sales_rev! - v.cogs!); c=true; }
+        if(n(v.gross) && n(v.cogs) && !n(v.sales_rev)) { v.sales_rev = r(v.gross! + v.cogs!); c=true; }
+        if(n(v.sales_rev) && n(v.gross) && !n(v.cogs)) { v.cogs = r(v.sales_rev! - v.gross!); c=true; }
+        if(n(v.gross) && n(v.opex) && !n(v.ebit)) { v.ebit = r(v.gross! - v.opex!); c=true; }
+        if(n(v.ebit) && n(v.opex) && !n(v.gross)) { v.gross = r(v.ebit! + v.opex!); c=true; }
+        if(n(v.gross) && n(v.ebit) && !n(v.opex)) { v.opex = r(v.gross! - v.ebit!); c=true; }
+        if(n(v.ebit) && n(v.capex) && !n(v.net_cf)) { v.net_cf = r(v.ebit! - (v.capex||0)); c=true; }
+      }
+      return v;
+    },
+    formula: 'مجمل الربح = إيرادات − COGS | EBIT = مجمل − OpEx | صافي = EBIT − CapEx',
+    latex: '\\\\text{EBIT} = \\\\text{المبيعات} - \\\\text{COGS} - \\\\text{OpEx}'
+  }
 ];
+
+// Auto-wrap all solvers to enforce high precision intermediate calculations
+// and perform rounding only at the final output step.
+MODULES.forEach(mod => {
+  const origSolver = mod.solver;
+  mod.solver = (v: any) => {
+    const solved = origSolver(v);
+    // Round numeric values in the returned object to 2 decimal places
+    Object.keys(solved).forEach(k => {
+      if (typeof solved[k] === 'number' && k !== '_error' && k !== '_decision') {
+        solved[k] = Math.round(solved[k] * 100) / 100;
+      }
+    });
+    return solved;
+  };
+});

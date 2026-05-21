@@ -230,15 +230,15 @@ export const generateStepsLatex = (def: AccountingModuleDef, data: AccountingNod
     }
     else {
         // Generic fallback generator
-        blocks.push({ type: 'header', text: `خطوات حساب المعادلة: ${def.title}` });
+        blocks.push({ type: 'header', text: 'node.steps_title' });
         if (def.latex) {
-            blocks.push({ type: 'text', text: 'تطبيق القاعدة الأساسية المباشرة:' });
+            blocks.push({ type: 'text', text: 'node.steps_apply' });
             blocks.push({ type: 'latex', latex: def.latex });
         }
         
         const outputs = def.fields.filter(f => (data.calcKeys || []).includes(f.k));
         if (outputs.length > 0) {
-            blocks.push({ type: 'header', text: 'النواتج المستخلصة بالتعويض في النظام:' });
+            blocks.push({ type: 'header', text: 'node.steps_derived' });
             outputs.forEach(o => {
                 blocks.push({ type: 'latex', latex: `\\text{${o.l}} = ${resBox(v[o.k], o.u)}` });
             });
