@@ -356,7 +356,8 @@ export const BrutalNode = React.memo(({ id, data }: { id: string, data: Accounti
                       dir="ltr"
                       lang="en"
                       style={{ 
-                        fontFamily: 'Cairo, sans-serif',
+                        fontFamily: 'Outfit, sans-serif',
+                        fontVariantNumeric: 'tabular-nums',
                         backgroundColor: isGoogle 
                           ? (isCalc 
                               ? (darkMode ? '#1b3a24' : '#e6f4ea') 

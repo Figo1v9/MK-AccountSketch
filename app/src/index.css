@@ -3117,3 +3117,77 @@ html.theme-google .steps-item {
               box-shadow 0.25s cubic-bezier(0.2, 0, 0, 1) !important;
 }
 
+/* ═══════════════════════════════════
+   UI PRECISION SPECIAL ENHANCEMENTS
+   ═══════════════════════════════════ */
+
+/* 🔷 1. Arabic & RTL Typography Reset */
+:lang(ar),
+[dir="rtl"] {
+  font-family: "Cairo", system-ui, -apple-system, BlinkMacSystemFont, sans-serif !important;
+  line-height: 1.8 !important;  /* Arabic text requires a larger line-height */
+  letter-spacing: 0 !important; /* Resets letter-spacing to prevent character splitting */
+}
+
+/* Reset letter-spacing on all child elements inside RTL/AR containers to secure badges */
+[dir="rtl"] *,
+:lang(ar) * {
+  letter-spacing: 0 !important;
+}
+
+/* Re-apply Outfit and tabular numbers to English/Numerical elements inside RTL layouts */
+[dir="rtl"] [dir="ltr"],
+[dir="rtl"] [lang="en"],
+[dir="rtl"] .invoice-row-value,
+[dir="rtl"] .invoice-footer-value,
+[dir="rtl"] .fi,
+[dir="rtl"] input[type="text"],
+[dir="rtl"] .invoice-meta-item span {
+  font-family: "Outfit", "Courier New", monospace !important;
+  font-variant-numeric: tabular-nums !important;
+  letter-spacing: -0.02em !important;
+}
+
+/* 🔷 2. Tabular Numbers for Measured Alignment */
+.invoice-row-value,
+.invoice-footer-value,
+.fi,
+.search-count,
+.pm-body input,
+[data-numeric],
+[dir="ltr"] {
+  font-variant-numeric: tabular-nums !important;
+}
+
+/* 🔷 3. Micro-Optical Adjustments for SVG Icons */
+.pm-title svg,
+.brand-logo svg,
+.panel-header svg,
+.search-input-wrap svg,
+.invoice-brand svg,
+.btn-icon svg {
+  transform: translateY(-0.05em);
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+/* 🔷 4. Safe Touch Targets for Mobile Devices (Apple HIG & Material Design) */
+@media (max-width: 768px) {
+  .pm-head button,
+  .equation-close,
+  .search-clear,
+  .settings-trigger {
+    position: relative;
+  }
+  .pm-head button::before,
+  .equation-close::before,
+  .search-clear::before,
+  .settings-trigger::before {
+    content: '';
+    position: absolute;
+    inset: -8px; /* Expand touch hitbox safely to meet Apple HIG (>= 44px) without affecting visual grid */
+  }
+}
+
+

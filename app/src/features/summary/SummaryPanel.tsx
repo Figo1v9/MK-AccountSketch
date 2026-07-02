@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { useAccountStore } from '@/store/accountStore';
 import { MODULES } from '@/core/modules';
 import { formatCurrency } from '@/lib/utils';
-import { Download, FileText, FileSpreadsheet, BarChart3, Sparkles, Receipt, Calendar, Hash, Printer } from 'lucide-react';
+import { Download, FileText, FileSpreadsheet, BarChart3, Sparkles, Receipt, Calendar, Hash } from 'lucide-react';
 import { useTranslation, useDynamicTranslation, useI18nStore } from '@/lib/i18n';
 import { useSettingsStore } from '@/store/settingsStore';
 import { getNodeThemeStyle } from '@/core/themeColors';
